@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>MERIDIAN GALACTIC FLIGHT — PHASE 3.6</title>
+<title>MERIDIAN GALACTIC FLIGHT — PHASE 4.0</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -26,8 +26,8 @@
   }
   #atmosHaze {
     position: fixed; inset: 0; pointer-events: none; z-index: 5;
-    background: radial-gradient(circle at center, rgba(30,140,220,0.0) 0%, rgba(10,50,90,0.0) 100%);
-    transition: background 0.2s ease;
+    background: transparent;
+    transition: background 0.3s ease;
   }
   #hud {
     position: fixed; inset: 0; pointer-events: none; z-index: 10;
@@ -40,7 +40,7 @@
   .panel {
     position: absolute;
     border: 1px solid rgba(90,255,150,0.45);
-    background: rgba(0,14,6,0.72);
+    background: rgba(0,14,6,0.75);
     padding: 6px 10px;
     letter-spacing: 0.06em;
   }
@@ -98,6 +98,11 @@
     background: rgba(30, 110, 55, 0.9);
     box-shadow: 0 0 12px rgba(100, 255, 160, 0.6);
   }
+  .btn.ascent {
+    background: rgba(80, 20, 10, 0.85);
+    border-color: #ff8a65;
+    color: #ffab91;
+  }
 
   /* Modal / Menu */
   #menu {
@@ -149,18 +154,18 @@
 <div id="hud">
   <div id="tl" class="panel">
     <div>MERIDIAN GALACTIC FLIGHT</div>
-    <div class="dim">PHASE 3.6 // ANTI-LOCK FLIGHT STABILIZER</div>
+    <div class="dim">PHASE 4.0 // DUAL-MODE SPHERICAL PLANET ENGINE</div>
   </div>
   <div id="tr" class="panel">
-    <div>VEL <span id="vel">0.000</span> c | ALT <span id="alt" class="cyan">SPACE</span></div>
+    <div>VEL <span id="vel">0.000</span> <span id="velUnit">c</span> | ALT <span id="alt" class="cyan">ORBIT</span></div>
     <div class="dim">THR <span id="thr">0</span>% | V-SPEED <span id="vspeed">0.0</span> u/s</div>
   </div>
   <div id="bl" class="panel">
     <div>HDG <span id="hdg">000.0 / +00.0</span></div>
-    <div class="dim">FLIGHT MODE: <span id="flightMode" class="cyan">ORBITAL DRIVE</span></div>
+    <div class="dim">MODE: <span id="flightMode" class="cyan">DEEP SPACE DRIVE</span></div>
   </div>
   <div id="br" class="panel">
-    <div>LOCK: <span id="tgtName" class="cyan">AETHEL-PRIME</span></div>
+    <div>TARGET: <span id="tgtName" class="cyan">AETHEL-PRIME</span></div>
     <div class="dim">DIST: <span id="tgtDist" class="cyan">--</span> u | STATUS: <span id="landingStatus">IN CRUISE</span></div>
   </div>
 </div>
@@ -170,7 +175,7 @@
 
 <div id="controls">
   <button class="btn" id="btnBrake">RETRO −</button>
-  <button class="btn" id="btnTarget">TARGET: AETHEL</button>
+  <button class="btn" id="btnTarget">TARGET</button>
   <button class="btn" id="btnTilt">ENABLE TILT</button>
   <button class="btn" id="btnLevel">LEVEL</button>
   <button class="btn" id="btnThrust">THRUST +</button>
@@ -178,12 +183,12 @@
 
 <div id="menu">
   <article>
-    <h1>MERIDIAN // ATMOSPHERIC FLIGHT</h1>
+    <h1>MERIDIAN // DUAL-ENGINE FLIGHT</h1>
     <p>
-      Phase 3.6 fixes pitch lockups with universal landscape gyro mapping &amp; instant LEVEL recovery.<br><br>
-      • Tilt phone back to pitch up into the sky; forward to dive.<br>
-      • Tap <strong>LEVEL</strong> at any time to instantly restore level horizon.<br>
-      • Touch swiping now directly overrides tilt to pull out of dives.
+      Phase 4.0 splits flight into two dedicated simulation modes:<br><br>
+      • <strong>SPACE MODE:</strong> Interstellar near-light travel across the Aethel System.<br>
+      • <strong>PLANETARY MODE:</strong> True 360° spherical globe flight, atmospheric aerodynamics, and surface touchdown.<br>
+      • Seamlessly return to space at any time via <strong>ORBITAL ASCENT</strong>!
     </p>
     <button class="launchBtn" id="launchTilt">LAUNCH (TILT)</button>
     <button class="launchSec" id="launchTouch">LAUNCH (TOUCH / KEYS)</button>
@@ -251,21 +256,22 @@ const sizes = new Float32Array(N);
 const points = new Float32Array(N * 8);
 const lines = new Float32Array(N * 16);
 
-/* Spherical Surface Terrain Mesh Data */
-const GRID_SIZE = 50;
-const TERRAIN_LINES = (GRID_SIZE * (GRID_SIZE + 1) * 2) * 2;
-const terrainPoints = new Float32Array(TERRAIN_LINES * 8);
+/* Spherical Globe Mesh Data (True 3D planetary latitude/longitude sphere) */
+const SPHERE_LAT_SEGS = 28;
+const SPHERE_LON_SEGS = 36;
+const SPHERE_TOTAL_LINES = (SPHERE_LAT_SEGS * (SPHERE_LON_SEGS + 1) + SPHERE_LON_SEGS * (SPHERE_LAT_SEGS + 1)) * 2;
+const spherePoints = new Float32Array(SPHERE_TOTAL_LINES * 8);
 
 const pb = gl.createBuffer();
 const lb = gl.createBuffer();
-const tb = gl.createBuffer();
+const sb = gl.createBuffer();
 
 gl.bindBuffer(gl.ARRAY_BUFFER, pb);
 gl.bufferData(gl.ARRAY_BUFFER, points.byteLength, gl.DYNAMIC_DRAW);
 gl.bindBuffer(gl.ARRAY_BUFFER, lb);
 gl.bufferData(gl.ARRAY_BUFFER, lines.byteLength, gl.DYNAMIC_DRAW);
-gl.bindBuffer(gl.ARRAY_BUFFER, tb);
-gl.bufferData(gl.ARRAY_BUFFER, terrainPoints.byteLength, gl.DYNAMIC_DRAW);
+gl.bindBuffer(gl.ARRAY_BUFFER, sb);
+gl.bufferData(gl.ARRAY_BUFFER, spherePoints.byteLength, gl.DYNAMIC_DRAW);
 
 const attrs = ['p','c','s','a'].map(n => gl.getAttribLocation(prog, n));
 const uniforms = {};
@@ -283,15 +289,19 @@ gl.enable(gl.BLEND);
 gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
 gl.disable(gl.DEPTH_TEST);
 
-/* Solar System Objects */
+/* Solar System Bodies */
 const celestialBodies = [
   { name: "AETHEL-SUN",  x: 0,     y: 0,     z: -18000, r: 850, cr: 1.0, cg: 0.9, cb: 0.35, orbitR: 0,     orbitSpeed: 0 },
-  { name: "AETHEL-PRIME",x: 3800,  y: 400,   z: -16500, r: 350, cr: 0.2, cg: 0.7, cb: 1.00, orbitR: 4200, orbitSpeed: 0.04, atmosColor: [0.1, 0.8, 1.0], atmosRadius: 1100 },
-  { name: "AETHEL-II",   x: -6200, y: -800,  z: -19800, r: 170, cr: 1.0, cg: 0.4, cb: 0.20, orbitR: 6800, orbitSpeed: 0.025, atmosColor: [1.0, 0.5, 0.2], atmosRadius: 600 }
+  { name: "AETHEL-PRIME",x: 3800,  y: 400,   z: -16500, r: 350, cr: 0.2, cg: 0.7, cb: 1.00, orbitR: 4200, orbitSpeed: 0.04, atmosColor: [0.1, 0.8, 1.0], atmosRadius: 900 },
+  { name: "AETHEL-II",   x: -6200, y: -800,  z: -19800, r: 170, cr: 1.0, cg: 0.4, cb: 0.20, orbitR: 6800, orbitSpeed: 0.025, atmosColor: [1.0, 0.5, 0.2], atmosRadius: 500 }
 ];
 let targetIndex = 1;
 
-/* Player State */
+/* Flight Engines: 'SPACE' or 'PLANET' */
+let currentEngine = 'SPACE';
+let activePlanet = celestialBodies[1];
+
+/* Spacecraft State */
 let px = 0, py = 0, pz = 0;
 let yaw = 0, pitch = 0;
 let throttle = 0;
@@ -302,10 +312,16 @@ let turnX = 0, turnY = 0;
 let drag = null;
 let lastTime = 0, fps = 60;
 let right = [1,0,0], up = [0,1,0], forward = [0,0,-1], back = [0,0,1];
+
+/* Planetary Flight State (Spherical coordinates around globe) */
+let pLat = 0.0;       // -PI/2 to PI/2
+let pLon = 0.0;       // -PI to PI
+let pAlt = 150.0;     // Altitude above radius (u)
+let pHeading = 0.0;   // Flight heading on planet surface
+let pPitch = 0.0;     // Pitch relative to local horizon
+let pSpeed = 0.0;     // Forward atmospheric speed
 let landed = false;
-let verticalSpeed = 0;
-let surfaceAltitude = 99999;
-let inAtmosphere = false;
+let isAscending = false;
 
 function rand(a, b) { return a + Math.random() * (b - a); }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -367,8 +383,13 @@ canvas.onpointerdown = e => {
 };
 canvas.onpointermove = e => {
   if (!drag) return;
-  yaw -= (e.clientX - drag.x) * 0.004;
-  pitch = clamp(pitch - (e.clientY - drag.y) * 0.005, -1.38, 1.38);
+  if (currentEngine === 'SPACE') {
+    yaw -= (e.clientX - drag.x) * 0.004;
+    pitch = clamp(pitch - (e.clientY - drag.y) * 0.005, -1.38, 1.38);
+  } else {
+    pHeading += (e.clientX - drag.x) * 0.004;
+    pPitch = clamp(pPitch - (e.clientY - drag.y) * 0.004, -1.2, 1.2);
+  }
   drag = { x: e.clientX, y: e.clientY };
 };
 canvas.onpointerup = canvas.onpointercancel = () => drag = null;
@@ -376,7 +397,7 @@ canvas.onpointerup = canvas.onpointercancel = () => drag = null;
 addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key.startsWith('Arrow')) e.preventDefault(); });
 addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-/* Orientation Angle Auto-Detection (Landscape 90 vs 270) */
+/* Auto-detect landscape orientation angle */
 function getOrientationMap(beta, gamma) {
   let angle = window.orientation;
   if (typeof angle === 'undefined') {
@@ -429,17 +450,79 @@ document.getElementById('btnTilt').onclick = () => {
   else enableTilt();
 };
 
-/* LEVEL BUTTON: Instantly recovers level horizon and clears gyro lock */
+/* LEVEL / RECOVERY */
 document.getElementById('btnLevel').onclick = () => {
-  pitch = 0;
+  if (currentEngine === 'SPACE') {
+    pitch = 0;
+  } else {
+    pPitch = 0;
+  }
   neutralSensor = rawSensor ? { ...rawSensor } : null;
   turnX = turnY = 0;
 };
 
-document.getElementById('btnTarget').onclick = () => {
-  targetIndex = (targetIndex + 1) % celestialBodies.length;
-  document.getElementById('btnTarget').textContent = 'TARGET: ' + celestialBodies[targetIndex].name.replace('AETHEL-','');
+/* TARGET / ORBITAL ASCENT BUTTON */
+const btnTarget = document.getElementById('btnTarget');
+btnTarget.onclick = () => {
+  if (currentEngine === 'SPACE') {
+    targetIndex = (targetIndex + 1) % celestialBodies.length;
+    btnTarget.textContent = 'TARGET: ' + celestialBodies[targetIndex].name.replace('AETHEL-','');
+  } else {
+    // Initiate Orbital Ascent back to space!
+    initiateOrbitalAscent();
+  }
 };
+
+function updateTargetButton() {
+  if (currentEngine === 'PLANET') {
+    btnTarget.textContent = '▲ ASCENT TO SPACE';
+    btnTarget.className = 'btn ascent';
+  } else {
+    btnTarget.textContent = 'TARGET: ' + celestialBodies[targetIndex].name.replace('AETHEL-','');
+    btnTarget.className = 'btn';
+  }
+}
+
+/* Transitions Between Space & Planet Engines */
+function enterPlanetaryFlight(planet) {
+  currentEngine = 'PLANET';
+  activePlanet = planet;
+  landed = false;
+  isAscending = false;
+  pAlt = 220.0;
+  pLat = 0.2;
+  pLon = 0.0;
+  pHeading = 0.0;
+  pPitch = -0.15;
+  pSpeed = 35.0;
+  throttle = 0.4;
+  updateTargetButton();
+}
+
+function initiateOrbitalAscent() {
+  if (isAscending) return;
+  isAscending = true;
+  landed = false;
+  pPitch = 0.85; // Nose up
+  throttle = 1.0;
+}
+
+function exitToSpaceFlight() {
+  currentEngine = 'SPACE';
+  isAscending = false;
+  landed = false;
+  
+  // Position ship outside the atmosphere
+  const rOut = activePlanet.r + 950;
+  px = activePlanet.x + Math.sin(pLon) * Math.cos(pLat) * rOut;
+  py = activePlanet.y + Math.sin(pLat) * rOut;
+  pz = activePlanet.z + Math.cos(pLon) * Math.cos(pLat) * rOut;
+  
+  pitch = 0.1;
+  yaw = pHeading;
+  throttle = 0.35;
+  updateTargetButton();
+}
 
 /* 2D Canvas Overlay */
 const overlay = document.createElement('canvas');
@@ -457,11 +540,11 @@ function resizeOverlay() {
 addEventListener('resize', resizeOverlay);
 resizeOverlay();
 
-/* Procedural Noise for Spherical Elevation */
-function sphericalTerrainHeight(nx, ny, nz) {
-  const s1 = Math.sin(nx * 8.0) * Math.cos(ny * 8.0) * Math.sin(nz * 8.0) * 16.0;
-  const s2 = Math.sin(nx * 18.0 + 1.2) * Math.sin(ny * 18.0 + 0.8) * Math.cos(nz * 18.0) * 7.0;
-  const s3 = Math.cos(nx * 36.0) * Math.sin(ny * 36.0) * Math.sin(nz * 36.0) * 3.0;
+/* Elevation Noise */
+function globeElevation(lat, lon) {
+  const s1 = Math.sin(lat * 8.0) * Math.cos(lon * 8.0) * 16.0;
+  const s2 = Math.sin(lat * 18.0 + 1.2) * Math.cos(lon * 18.0 + 0.8) * 8.0;
+  const s3 = Math.cos(lat * 36.0) * Math.sin(lon * 36.0) * 3.0;
   return s1 + s2 + s3;
 }
 
@@ -472,7 +555,7 @@ function setVertex(arr, o, x, y, z, r, g, b, size, a) {
   arr[o+6] = size; arr[o+7] = a;
 }
 
-/* Main Flight Loop */
+/* Main Loop */
 function frame(t) {
   requestAnimationFrame(frame);
   const dt = lastTime ? Math.min((t - lastTime) / 1000, 0.04) : 0.016;
@@ -480,114 +563,69 @@ function frame(t) {
   fps += (1 / dt - fps) * 0.05;
 
   const targetObj = celestialBodies[targetIndex];
-  const distToTarget = Math.hypot(targetObj.x - px, targetObj.y - py, targetObj.z - pz);
-  const targetPlanetRadius = targetObj.r || 350;
-  surfaceAltitude = Math.max(0, distToTarget - targetPlanetRadius);
-
-  // Atmospheric status
-  inAtmosphere = (targetObj.atmosRadius && distToTarget < targetObj.atmosRadius);
-  const atmosDensity = inAtmosphere ? clamp((targetObj.atmosRadius - distToTarget) / (targetObj.atmosRadius - targetPlanetRadius), 0, 1) : 0;
-
-  // Visual Atmosphere Haze
   const hazeEl = document.getElementById('atmosHaze');
-  if (inAtmosphere) {
-    const r = Math.round(targetObj.atmosColor[0] * 255);
-    const g = Math.round(targetObj.atmosColor[1] * 255);
-    const b = Math.round(targetObj.atmosColor[2] * 255);
-    hazeEl.style.background = `radial-gradient(circle at center, rgba(${r},${g},${b},${atmosDensity * 0.45}) 0%, rgba(${r*0.4},${g*0.4},${b*0.4},${atmosDensity * 0.85}) 100%)`;
-  } else {
-    hazeEl.style.background = 'transparent';
-  }
 
-  // Steering: Tilt Back = Look Up; Tilt Forward = Look Down
+  // Input throttle
   if (active && !landed) {
-    let steerX = (keys['arrowright'] || keys['d'] ? 1 : 0) - (keys['arrowleft'] || keys['a'] ? 1 : 0);
-    let steerY = (keys['arrowup'] || keys['w'] ? 1 : 0) - (keys['arrowdown'] || keys['s'] ? 1 : 0);
-    
-    if (tilt && !drag) {
-      steerX += Math.abs(turnX) < 0.05 ? 0 : turnX;
-      steerY += Math.abs(turnY) < 0.05 ? 0 : turnY * 1.4;
-    }
-    
-    yaw -= steerX * (inAtmosphere ? 1.1 : 0.85) * dt;
-    pitch = clamp(pitch + steerY * (inAtmosphere ? 1.15 : 0.95) * dt, -1.38, 1.38);
-
     if (held.thrust || keys['shift']) throttle = clamp(throttle + 0.35 * dt, 0, 1);
     if (held.brake || keys['control']) throttle = clamp(throttle - 0.65 * dt, 0, 1);
   }
 
-  updateBasis();
+  /* =========================================================================
+     ENGINE 1: DEEP-FIELD SPACE FLIGHT
+     ========================================================================= */
+  if (currentEngine === 'SPACE') {
+    hazeEl.style.background = 'transparent';
 
-  // Speed & Flight Mode Scaling
-  let maxSpeedC = inAtmosphere ? (0.015 * (1 - atmosDensity * 0.85)) : 0.99;
-  let velC = maxSpeedC * Math.pow(throttle, 1.6);
-  let moveUnits = active && !landed ? (15 + velC * (inAtmosphere ? 800 : 6500)) * dt : 0;
+    let steerX = (keys['arrowright'] || keys['d'] ? 1 : 0) - (keys['arrowleft'] || keys['a'] ? 1 : 0);
+    let steerY = (keys['arrowup'] || keys['w'] ? 1 : 0) - (keys['arrowdown'] || keys['s'] ? 1 : 0);
+    if (tilt && !drag) {
+      steerX += Math.abs(turnX) < 0.05 ? 0 : turnX;
+      steerY += Math.abs(turnY) < 0.05 ? 0 : turnY * 1.4;
+    }
+    yaw -= steerX * 0.85 * dt;
+    pitch = clamp(pitch + steerY * 0.95 * dt, -1.38, 1.38);
 
-  // Planetary Gravity in atmosphere
-  if (inAtmosphere && !landed) {
-    const gx = (targetObj.x - px) / distToTarget;
-    const gy = (targetObj.y - py) / distToTarget;
-    const gz = (targetObj.z - pz) / distToTarget;
-    const gravForce = 18 * atmosDensity * dt;
-    px += gx * gravForce;
-    py += gy * gravForce;
-    pz += gz * gravForce;
-  }
+    updateBasis();
 
-  if (!landed) {
+    const velC = 0.99 * Math.pow(throttle, 1.6);
+    const moveUnits = active ? (20 + velC * 6500) * dt : 0;
     px += forward[0] * moveUnits;
     py += forward[1] * moveUnits;
     pz += forward[2] * moveUnits;
-  }
 
-  // Altitude & Landing Logic
-  verticalSpeed = moveUnits * forward[1];
-  if (inAtmosphere && surfaceAltitude <= 8) {
-    if (Math.abs(verticalSpeed) < 18 && throttle < 0.25) {
-      landed = true;
-      throttle = 0;
-    } else if (!landed) {
-      // Reposition above ground without hard lock
-      const upX = (px - targetObj.x) / distToTarget;
-      const upY = (py - targetObj.y) / distToTarget;
-      const upZ = (pz - targetObj.z) / distToTarget;
-      px = targetObj.x + upX * (targetPlanetRadius + 12);
-      py = targetObj.y + upY * (targetPlanetRadius + 12);
-      pz = targetObj.z + upZ * (targetPlanetRadius + 12);
+    // Check entry transition into planet atmosphere
+    celestialBodies.forEach(b => {
+      if (b.atmosRadius) {
+        const d = Math.hypot(b.x - px, b.y - py, b.z - pz);
+        if (d < b.atmosRadius * 0.65) {
+          enterPlanetaryFlight(b);
+        }
+      }
+    });
+
+    // Starfield update
+    const streak = 6 + velC * 240;
+    for (let i = 0; i < N; i++) {
+      const k = i * 3;
+      const dx = positions[k] - px, dy = positions[k+1] - py, dz = positions[k+2] - pz;
+      const dist = Math.hypot(dx, dy, dz);
+      if (dist > 10000 || dist < 12) spawnStar(i, false);
+
+      const relX = positions[k] - px, relY = positions[k+1] - py, relZ = positions[k+2] - pz;
+      setVertex(points, i * 8, relX, relY, relZ, colors[k], colors[k+1], colors[k+2], sizes[i], 1.0);
+      setVertex(lines, i * 16, relX, relY, relZ, colors[k], colors[k+1], colors[k+2], sizes[i], Math.min(0.7, velC * 2.2));
+      setVertex(lines, i * 16 + 8, relX + forward[0] * streak, relY + forward[1] * streak, relZ + forward[2] * streak, colors[k], colors[k+1], colors[k+2], sizes[i], 0.0);
     }
-  }
 
-  // Starfield update
-  const starAlpha = clamp(1.0 - atmosDensity * 1.2, 0, 1);
-  const streak = 6 + velC * 240;
-  for (let i = 0; i < N; i++) {
-    const k = i * 3;
-    const dx = positions[k] - px;
-    const dy = positions[k+1] - py;
-    const dz = positions[k+2] - pz;
-    const dist = Math.hypot(dx, dy, dz);
+    // WebGL space render
+    gl.clearColor(0.0, 0.003, 0.010, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform3fv(uniforms.right, right);
+    gl.uniform3fv(uniforms.up, up);
+    gl.uniform3fv(uniforms.back, back);
+    gl.uniform1f(uniforms.aspect, canvas.width / canvas.height);
 
-    if (dist > 10000 || dist < 12) spawnStar(i, false);
-
-    const relX = positions[k] - px;
-    const relY = positions[k+1] - py;
-    const relZ = positions[k+2] - pz;
-
-    setVertex(points, i * 8, relX, relY, relZ, colors[k], colors[k+1], colors[k+2], sizes[i], starAlpha);
-    setVertex(lines, i * 16, relX, relY, relZ, colors[k], colors[k+1], colors[k+2], sizes[i], Math.min(0.7 * starAlpha, velC * 2.2));
-    setVertex(lines, i * 16 + 8, relX + forward[0] * streak, relY + forward[1] * streak, relZ + forward[2] * streak, colors[k], colors[k+1], colors[k+2], sizes[i], 0.0);
-  }
-
-  // WebGL Render
-  gl.clearColor(0.0, 0.003, 0.010, 1.0);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-
-  gl.uniform3fv(uniforms.right, right);
-  gl.uniform3fv(uniforms.up, up);
-  gl.uniform3fv(uniforms.back, back);
-  gl.uniform1f(uniforms.aspect, canvas.width / canvas.height);
-
-  if (starAlpha > 0.01) {
     bindBuffer(pb);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, points);
     gl.drawArrays(gl.POINTS, 0, N);
@@ -597,148 +635,251 @@ function frame(t) {
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, lines);
       gl.drawArrays(gl.LINES, 0, N * 2);
     }
+
+    // HUD Text
+    document.getElementById('vel').textContent = velC.toFixed(3);
+    document.getElementById('velUnit').textContent = 'c';
+    document.getElementById('alt').textContent = 'ORBIT';
+    document.getElementById('flightMode').textContent = 'DEEP SPACE DRIVE';
+    document.getElementById('landingStatus').textContent = 'IN CRUISE';
+    document.getElementById('landingStatus').className = 'cyan';
   }
 
-  // TRUE SPHERICAL TERRAIN GRID
-  if (inAtmosphere && surfaceAltitude < 500) {
-    let tIdx = 0;
-    const R = targetPlanetRadius;
+  /* =========================================================================
+     ENGINE 2: TRUE 3D SPHERICAL PLANETARY FLIGHT
+     ========================================================================= */
+  else if (currentEngine === 'PLANET') {
+    const P = activePlanet;
+    const rAtm = P.atmosRadius || 900;
+    const atmosDensity = clamp((rAtm - (P.r + pAlt)) / (rAtm - P.r), 0, 1);
 
-    const subX = (px - targetObj.x) / distToTarget;
-    const subY = (py - targetObj.y) / distToTarget;
-    const subZ = (pz - targetObj.z) / distToTarget;
+    // Atmospheric scattering cockpit haze
+    const cr = Math.round(P.atmosColor[0] * 255);
+    const cg = Math.round(P.atmosColor[1] * 255);
+    const cb = Math.round(P.atmosColor[2] * 255);
+    hazeEl.style.background = `radial-gradient(circle at center, rgba(${cr},${cg},${cb},${atmosDensity * 0.45}) 0%, rgba(${cr*0.3},${cg*0.3},${cb*0.3},${atmosDensity * 0.85}) 100%)`;
 
-    let tempUp = [0, 1, 0];
-    if (Math.abs(subY) > 0.92) tempUp = [1, 0, 0];
-    
-    const txX = tempUp[1]*subZ - tempUp[2]*subY;
-    const txY = tempUp[2]*subX - tempUp[0]*subZ;
-    const txZ = tempUp[0]*subY - tempUp[1]*subX;
-    const txLen = Math.hypot(txX, txY, txZ) || 1;
-    const tangX = [txX/txLen, txY/txLen, txZ/txLen];
-
-    const tangZ = [
-      subY*tangX[2] - subZ*tangX[1],
-      subZ*tangX[0] - subX*tangX[2],
-      subX*tangX[1] - subY*tangX[0]
-    ];
-
-    const maxAngle = Math.min(1.2, 0.45 + (surfaceAltitude / R) * 0.85);
-    const stepAngle = (maxAngle * 2) / GRID_SIZE;
-
-    function getSpherePoint(gu, gv) {
-      const u = (gu - GRID_SIZE / 2) * stepAngle;
-      const v = (gv - GRID_SIZE / 2) * stepAngle;
-      const radDist = Math.hypot(u, v);
-      
-      const dirX = subX + tangX[0] * u + tangZ[0] * v;
-      const dirY = subY + tangX[1] * u + tangZ[1] * v;
-      const dirZ = subZ + tangX[2] * u + tangZ[2] * v;
-      const dLen = Math.hypot(dirX, dirY, dirZ) || 1;
-      const nx = dirX / dLen, ny = dirY / dLen, nz = dirZ / dLen;
-
-      const elev = sphericalTerrainHeight(nx, ny, nz);
-      const radius = R + elev;
-
-      const wx = targetObj.x + nx * radius;
-      const wy = targetObj.y + ny * radius;
-      const wz = targetObj.z + nz * radius;
-
-      const edgeAlpha = clamp(1.0 - (radDist / maxAngle), 0, 1) * 0.75;
-
-      return {
-        x: wx - px,
-        y: wy - py,
-        z: wz - pz,
-        a: edgeAlpha
-      };
+    // Atmospheric steering
+    if (active && !landed && !isAscending) {
+      let steerX = (keys['arrowright'] || keys['d'] ? 1 : 0) - (keys['arrowleft'] || keys['a'] ? 1 : 0);
+      let steerY = (keys['arrowup'] || keys['w'] ? 1 : 0) - (keys['arrowdown'] || keys['s'] ? 1 : 0);
+      if (tilt && !drag) {
+        steerX += Math.abs(turnX) < 0.05 ? 0 : turnX;
+        steerY += Math.abs(turnY) < 0.05 ? 0 : turnY * 1.4;
+      }
+      pHeading += steerX * 1.25 * dt;
+      pPitch = clamp(pPitch + steerY * 1.15 * dt, -1.2, 1.2);
+    } else if (isAscending) {
+      pPitch = Math.min(1.4, pPitch + 0.8 * dt);
     }
 
-    for (let gx = 0; gx < GRID_SIZE; gx++) {
-      for (let gz = 0; gz < GRID_SIZE; gz++) {
-        const p1 = getSpherePoint(gx, gz);
-        const p2 = getSpherePoint(gx + 1, gz);
-        const p3 = getSpherePoint(gx, gz + 1);
+    // Atmospheric speed & position on 3D sphere
+    pSpeed = (isAscending ? 120 : (15 + throttle * 75));
+    const groundClearance = pAlt - globeElevation(pLat, pLon);
 
-        if (p1.a > 0.02 || p2.a > 0.02) {
-          setVertex(terrainPoints, tIdx * 8, p1.x, p1.y, p1.z, 0.25, 0.85, 0.45, 1.0, p1.a); tIdx++;
-          setVertex(terrainPoints, tIdx * 8, p2.x, p2.y, p2.z, 0.25, 0.85, 0.45, 1.0, p2.a); tIdx++;
-        }
+    if (!landed) {
+      // Angular velocity across the spherical globe
+      const latSpeed = (pSpeed * Math.cos(pHeading) * Math.cos(pPitch)) / (P.r + pAlt);
+      const lonSpeed = (pSpeed * Math.sin(pHeading) * Math.cos(pPitch)) / ((P.r + pAlt) * Math.cos(pLat));
+      pLat = clamp(pLat + latSpeed * dt, -Math.PI * 0.48, Math.PI * 0.48);
+      pLon = (pLon + lonSpeed * dt + Math.PI * 3) % (Math.PI * 2) - Math.PI;
 
-        if (p1.a > 0.02 || p3.a > 0.02) {
-          setVertex(terrainPoints, tIdx * 8, p1.x, p1.y, p1.z, 0.20, 0.70, 0.35, 1.0, p1.a); tIdx++;
-          setVertex(terrainPoints, tIdx * 8, p3.x, p3.y, p3.z, 0.20, 0.70, 0.35, 1.0, p3.a); tIdx++;
+      // Vertical rate
+      const vRate = pSpeed * Math.sin(pPitch) - (isAscending ? 0 : 4.5 * atmosDensity);
+      pAlt += vRate * dt;
+
+      // Landing detection
+      if (groundClearance <= 3.0) {
+        if (Math.abs(vRate) < 14.0 && throttle < 0.25) {
+          landed = true;
+          throttle = 0;
+          pAlt = globeElevation(pLat, pLon) + 2.5;
+        } else {
+          pAlt = globeElevation(pLat, pLon) + 3.0; // gentle rebound
         }
+      }
+
+      // Exit back to space if alt exceeds atmosphere
+      if (pAlt > (rAtm - P.r)) {
+        exitToSpaceFlight();
       }
     }
 
-    bindBuffer(tb);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, terrainPoints);
-    gl.drawArrays(gl.LINES, 0, tIdx);
+    // Construct local spherical camera coordinate frame
+    // Up: Radial vector out from planet center
+    const upX = Math.sin(pLon) * Math.cos(pLat);
+    const upY = Math.sin(pLat);
+    const upZ = Math.cos(pLon) * Math.cos(pLat);
+
+    // North tangent (towards pole)
+    const northX = -Math.sin(pLon) * Math.sin(pLat);
+    const northY = Math.cos(pLat);
+    const northZ = -Math.cos(pLon) * Math.sin(pLat);
+
+    // East tangent (along equator)
+    const eastX = Math.cos(pLon);
+    const eastY = 0;
+    const eastZ = -Math.sin(pLon);
+
+    // Forward heading vector tangent to sphere
+    const ch = Math.cos(pHeading), sh = Math.sin(pHeading);
+    const cp = Math.cos(pPitch), sp = Math.sin(pPitch);
+
+    const fwdX = (northX * ch + eastX * sh) * cp + upX * sp;
+    const fwdY = (northY * ch + eastY * sh) * cp + upY * sp;
+    const fwdZ = (northZ * ch + eastZ * sh) * cp + upZ * sp;
+
+    forward = [fwdX, fwdY, fwdZ];
+    right = [
+      fwdY * upZ - fwdZ * upY,
+      fwdZ * upX - fwdX * upZ,
+      fwdX * upY - fwdY * upX
+    ];
+    up = [
+      right[1] * fwdZ - right[2] * fwdY,
+      right[2] * fwdX - right[0] * fwdZ,
+      right[0] * fwdY - right[1] * fwdX
+    ];
+    back = [-fwdX, -fwdY, -fwdZ];
+
+    // Ship world position in space
+    px = P.x + upX * (P.r + pAlt);
+    py = P.y + upY * (P.r + pAlt);
+    pz = P.z + upZ * (P.r + pAlt);
+
+    // Build the complete 3D spherical globe wireframe
+    let sIdx = 0;
+    function getGlobeVertex(lat, lon) {
+      const elev = globeElevation(lat, lon);
+      const rad = P.r + elev;
+      const gx = P.x + Math.sin(lon) * Math.cos(lat) * rad - px;
+      const gy = P.y + Math.sin(lat) * rad - py;
+      const gz = P.z + Math.cos(lon) * Math.cos(lat) * rad - pz;
+      return { x: gx, y: gy, z: gz };
+    }
+
+    // Latitude circles & Longitude meridians
+    for (let i = 0; i <= SPHERE_LAT_SEGS; i++) {
+      const lat = -Math.PI * 0.48 + (Math.PI * 0.96 * i) / SPHERE_LAT_SEGS;
+      for (let j = 0; j < SPHERE_LON_SEGS; j++) {
+        const lon1 = -Math.PI + (Math.PI * 2 * j) / SPHERE_LON_SEGS;
+        const lon2 = -Math.PI + (Math.PI * 2 * (j + 1)) / SPHERE_LON_SEGS;
+
+        const v1 = getGlobeVertex(lat, lon1);
+        const v2 = getGlobeVertex(lat, lon2);
+
+        // Distance from camera to fade distant backface of sphere
+        const d = Math.hypot(v1.x, v1.y, v1.z);
+        const alpha = clamp(1.0 - (d / (P.r * 2.5)), 0.05, 0.75);
+
+        setVertex(spherePoints, sIdx * 8, v1.x, v1.y, v1.z, 0.25, 0.85, 0.50, 1.0, alpha); sIdx++;
+        setVertex(spherePoints, sIdx * 8, v2.x, v2.y, v2.z, 0.25, 0.85, 0.50, 1.0, alpha); sIdx++;
+      }
+    }
+
+    for (let j = 0; j < SPHERE_LON_SEGS; j++) {
+      const lon = -Math.PI + (Math.PI * 2 * j) / SPHERE_LON_SEGS;
+      for (let i = 0; i < SPHERE_LAT_SEGS; i++) {
+        const lat1 = -Math.PI * 0.48 + (Math.PI * 0.96 * i) / SPHERE_LAT_SEGS;
+        const lat2 = -Math.PI * 0.48 + (Math.PI * 0.96 * (i + 1)) / SPHERE_LAT_SEGS;
+
+        const v1 = getGlobeVertex(lat1, lon);
+        const v2 = getGlobeVertex(lat2, lon);
+
+        const d = Math.hypot(v1.x, v1.y, v1.z);
+        const alpha = clamp(1.0 - (d / (P.r * 2.5)), 0.05, 0.65);
+
+        setVertex(spherePoints, sIdx * 8, v1.x, v1.y, v1.z, 0.20, 0.70, 0.35, 1.0, alpha); sIdx++;
+        setVertex(spherePoints, sIdx * 8, v2.x, v2.y, v2.z, 0.20, 0.70, 0.35, 1.0, alpha); sIdx++;
+      }
+    }
+
+    // Render Globe Mesh
+    gl.clearColor(0.0, 0.005, 0.015, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform3fv(uniforms.right, right);
+    gl.uniform3fv(uniforms.up, up);
+    gl.uniform3fv(uniforms.back, back);
+    gl.uniform1f(uniforms.aspect, canvas.width / canvas.height);
+
+    bindBuffer(sb);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, spherePoints);
+    gl.drawArrays(gl.LINES, 0, sIdx);
+
+    // HUD Text
+    document.getElementById('vel').textContent = Math.round(pSpeed);
+    document.getElementById('velUnit').textContent = 'u/s';
+    document.getElementById('alt').textContent = Math.round(Math.max(0, groundClearance)) + ' u';
+    document.getElementById('flightMode').textContent = isAscending ? 'ORBITAL ASCENT BURN' : landed ? 'TOUCHDOWN CONFIRMED' : '360° SPHERICAL FLIGHT';
+    
+    const statusEl = document.getElementById('landingStatus');
+    if (landed) {
+      statusEl.textContent = 'LANDED ON SURFACE';
+      statusEl.className = 'landed';
+    } else if (isAscending) {
+      statusEl.textContent = 'ESCAPING ATMOSPHERE';
+      statusEl.className = 'hot';
+    } else if (groundClearance < 25) {
+      statusEl.textContent = 'GROUND RADAR LOCK';
+      statusEl.className = 'warn';
+    } else {
+      statusEl.textContent = 'ATMOSPHERIC CRUISE';
+      statusEl.className = 'cyan';
+    }
   }
 
-  // 2D Overlay: Planet Spheres & Reticle
+  // 2D Overlay Elements & Reticle
   ctx.clearRect(0, 0, overlay.width, overlay.height);
-
   const cx = overlay.width / 2;
   const cy = overlay.height / 2;
   const fovFactor = (overlay.height / 2) * 1.35;
 
   let lockedScreen = null;
 
-  celestialBodies.forEach((b, idx) => {
-    if (b.orbitSpeed > 0) {
-      const angle = t * 0.00015 * b.orbitSpeed;
-      b.x = celestialBodies[0].x + Math.cos(angle) * b.orbitR;
-      b.z = celestialBodies[0].z + Math.sin(angle) * b.orbitR;
-    }
+  if (currentEngine === 'SPACE') {
+    celestialBodies.forEach((b, idx) => {
+      const rx = b.x - px, ry = b.y - py, rz = b.z - pz;
+      const vx = rx * right[0] + ry * right[1] + rz * right[2];
+      const vy = rx * up[0]    + ry * up[1]    + rz * up[2];
+      const vz = rx * back[0]  + ry * back[1]  + rz * back[2];
+      const dist = Math.hypot(rx, ry, rz);
 
-    const rx = b.x - px;
-    const ry = b.y - py;
-    const rz = b.z - pz;
+      if (vz < -5) {
+        const depth = -vz;
+        const sx = cx + (vx / depth) * fovFactor;
+        const sy = cy - (vy / depth) * fovFactor;
+        const screenRadius = (b.r / depth) * fovFactor;
 
-    const vx = rx * right[0] + ry * right[1] + rz * right[2];
-    const vy = rx * up[0]    + ry * up[1]    + rz * up[2];
-    const vz = rx * back[0]  + ry * back[1]  + rz * back[2];
+        if (idx === targetIndex) {
+          lockedScreen = { sx, sy, screenRadius, dist, name: b.name };
+        }
 
-    const dist = Math.hypot(rx, ry, rz);
-
-    if (vz < -5) {
-      const depth = -vz;
-      const sx = cx + (vx / depth) * fovFactor;
-      const sy = cy - (vy / depth) * fovFactor;
-      const screenRadius = (b.r / depth) * fovFactor;
-
-      if (idx === targetIndex) {
-        lockedScreen = { sx, sy, screenRadius, dist, name: b.name };
-      }
-
-      if (screenRadius > 1 && (!inAtmosphere || idx !== targetIndex)) {
-        const grad = ctx.createRadialGradient(sx - screenRadius*0.25, sy - screenRadius*0.25, screenRadius*0.1, sx, sy, screenRadius);
-        grad.addColorStop(0, `rgb(${Math.round(b.cr*255)}, ${Math.round(b.cg*255)}, ${Math.round(b.cb*255)})`);
-        grad.addColorStop(0.8, `rgb(${Math.round(b.cr*160)}, ${Math.round(b.cg*160)}, ${Math.round(b.cb*160)})`);
-        grad.addColorStop(1, 'rgba(0,0,0,0.9)');
-
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(sx, sy, screenRadius, 0, Math.PI * 2);
-        ctx.fill();
-
-        if (b.atmosColor) {
-          const atmosR = screenRadius * 1.35;
-          const atmosGrad = ctx.createRadialGradient(sx, sy, screenRadius * 0.9, sx, sy, atmosR);
-          atmosGrad.addColorStop(0, `rgba(${b.atmosColor[0]*255}, ${b.atmosColor[1]*255}, ${b.atmosColor[2]*255}, 0.55)`);
-          atmosGrad.addColorStop(1, 'rgba(0,0,0,0)');
-          ctx.fillStyle = atmosGrad;
+        if (screenRadius > 1) {
+          const grad = ctx.createRadialGradient(sx - screenRadius*0.25, sy - screenRadius*0.25, screenRadius*0.1, sx, sy, screenRadius);
+          grad.addColorStop(0, `rgb(${Math.round(b.cr*255)}, ${Math.round(b.cg*255)}, ${Math.round(b.cb*255)})`);
+          grad.addColorStop(0.8, `rgb(${Math.round(b.cr*160)}, ${Math.round(b.cg*160)}, ${Math.round(b.cb*160)})`);
+          grad.addColorStop(1, 'rgba(0,0,0,0.9)');
+          ctx.fillStyle = grad;
           ctx.beginPath();
-          ctx.arc(sx, sy, atmosR, 0, Math.PI * 2);
+          ctx.arc(sx, sy, screenRadius, 0, Math.PI * 2);
           ctx.fill();
+
+          if (b.atmosColor) {
+            const atmosR = screenRadius * 1.35;
+            const atmosGrad = ctx.createRadialGradient(sx, sy, screenRadius * 0.9, sx, sy, atmosR);
+            atmosGrad.addColorStop(0, `rgba(${b.atmosColor[0]*255}, ${b.atmosColor[1]*255}, ${b.atmosColor[2]*255}, 0.55)`);
+            atmosGrad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = atmosGrad;
+            ctx.beginPath();
+            ctx.arc(sx, sy, atmosR, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
       }
-    }
-  });
+    });
+  }
 
-  // Target Reticle
+  // Target Reticle Box
   const reticle = document.getElementById('targetReticle');
   const tag = document.getElementById('targetTag');
   if (lockedScreen && lockedScreen.sx > -50 && lockedScreen.sx < overlay.width + 50 &&
@@ -754,34 +895,13 @@ function frame(t) {
     reticle.style.display = 'none';
   }
 
-  // HUD Text Update
-  document.getElementById('vel').textContent = velC.toFixed(3);
+  // HUD Update
   document.getElementById('thr').textContent = Math.round(throttle * 100);
-  document.getElementById('alt').textContent = inAtmosphere ? `${Math.round(surfaceAltitude)} u` : 'ORBIT';
-  document.getElementById('vspeed').textContent = `${(verticalSpeed >= 0 ? '+' : '')}${verticalSpeed.toFixed(1)}`;
-  
   const yawDeg = ((yaw * 180 / Math.PI) % 360 + 360) % 360;
-  const pitchDeg = pitch * 180 / Math.PI;
+  const pitchDeg = (pitch * 180 / Math.PI);
   document.getElementById('hdg').textContent = `${yawDeg.toFixed(1).padStart(5,'0')} / ${pitchDeg>=0?'+':''}${pitchDeg.toFixed(1)}`;
-  
-  document.getElementById('flightMode').textContent = landed ? 'LANDED ON SURFACE' : inAtmosphere ? 'ATMOSPHERIC ENTRY' : 'DEEP FIELD DRIVE';
-  document.getElementById('tgtName').textContent = targetObj.name;
-  document.getElementById('tgtDist').textContent = Math.round(distToTarget);
-
-  const statusEl = document.getElementById('landingStatus');
-  if (landed) {
-    statusEl.textContent = 'TOUCHDOWN CONFIRMED';
-    statusEl.className = 'landed';
-  } else if (inAtmosphere && surfaceAltitude < 60) {
-    statusEl.textContent = 'FINAL DESCENT';
-    statusEl.className = 'hot';
-  } else if (inAtmosphere) {
-    statusEl.textContent = 'AEROBRAKING';
-    statusEl.className = 'warn';
-  } else {
-    statusEl.textContent = 'IN CRUISE';
-    statusEl.className = 'cyan';
-  }
+  document.getElementById('tgtName').textContent = currentEngine === 'PLANET' ? activePlanet.name : targetObj.name;
+  document.getElementById('tgtDist').textContent = currentEngine === 'PLANET' ? Math.round(pAlt) : Math.round(Math.hypot(targetObj.x - px, targetObj.y - py, targetObj.z - pz));
 }
 
 requestAnimationFrame(frame);
