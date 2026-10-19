@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>MERIDIAN GALACTIC FLIGHT — PHASE 3.5</title>
+<title>MERIDIAN GALACTIC FLIGHT — PHASE 3.6</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -149,7 +149,7 @@
 <div id="hud">
   <div id="tl" class="panel">
     <div>MERIDIAN GALACTIC FLIGHT</div>
-    <div class="dim">PHASE 3.5 // SPHERICAL PLANETARY TERRAIN</div>
+    <div class="dim">PHASE 3.6 // ANTI-LOCK FLIGHT STABILIZER</div>
   </div>
   <div id="tr" class="panel">
     <div>VEL <span id="vel">0.000</span> c | ALT <span id="alt" class="cyan">SPACE</span></div>
@@ -180,10 +180,10 @@
   <article>
     <h1>MERIDIAN // ATMOSPHERIC FLIGHT</h1>
     <p>
-      Phase 3.5 integrates <strong>Spherical Planetary Curvature</strong> into the procedural terrain mesh.<br><br>
-      • Lock onto Aethel-Prime and descend into the atmosphere.<br>
-      • Watch mountain ranges and valleys curve naturally around the globe toward the horizon.<br>
-      • Edge-fading eliminates square mesh boundaries for seamless planetary realism.
+      Phase 3.6 fixes pitch lockups with universal landscape gyro mapping &amp; instant LEVEL recovery.<br><br>
+      • Tilt phone back to pitch up into the sky; forward to dive.<br>
+      • Tap <strong>LEVEL</strong> at any time to instantly restore level horizon.<br>
+      • Touch swiping now directly overrides tilt to pull out of dives.
     </p>
     <button class="launchBtn" id="launchTilt">LAUNCH (TILT)</button>
     <button class="launchSec" id="launchTouch">LAUNCH (TOUCH / KEYS)</button>
@@ -366,9 +366,9 @@ canvas.onpointerdown = e => {
   drag = { x: e.clientX, y: e.clientY };
 };
 canvas.onpointermove = e => {
-  if (!drag || tilt) return;
-  yaw -= (e.clientX - drag.x) * 0.0035;
-  pitch -= (e.clientY - drag.y) * 0.0045; // Aviation pitch (drag down = look up)
+  if (!drag) return;
+  yaw -= (e.clientX - drag.x) * 0.004;
+  pitch = clamp(pitch - (e.clientY - drag.y) * 0.005, -1.38, 1.38);
   drag = { x: e.clientX, y: e.clientY };
 };
 canvas.onpointerup = canvas.onpointercancel = () => drag = null;
@@ -376,12 +376,16 @@ canvas.onpointerup = canvas.onpointercancel = () => drag = null;
 addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key.startsWith('Arrow')) e.preventDefault(); });
 addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-/* Tilt Gyro Handling */
+/* Orientation Angle Auto-Detection (Landscape 90 vs 270) */
 function getOrientationMap(beta, gamma) {
-  const angle = ((screen.orientation?.angle ?? window.orientation ?? 0) * Math.PI / 180);
+  let angle = window.orientation;
+  if (typeof angle === 'undefined') {
+    angle = screen.orientation ? screen.orientation.angle : 90;
+  }
+  const rad = (angle * Math.PI) / 180;
   return {
-    x: gamma * Math.cos(angle) + beta * Math.sin(angle),
-    y: beta * Math.cos(angle) - gamma * Math.sin(angle)
+    x: gamma * Math.cos(rad) + beta * Math.sin(rad),
+    y: beta * Math.cos(rad) - gamma * Math.sin(rad)
   };
 }
 const wrapDeg = v => ((v + 180) % 360 + 360) % 360 - 180;
@@ -391,8 +395,8 @@ addEventListener('deviceorientation', e => {
   rawSensor = getOrientationMap(e.beta, e.gamma);
   if (tilt && !neutralSensor) neutralSensor = { ...rawSensor };
   if (neutralSensor) {
-    turnX = clamp(wrapDeg(rawSensor.x - neutralSensor.x) / 20, -1, 1);
-    turnY = clamp(wrapDeg(rawSensor.y - neutralSensor.y) / 16, -1, 1);
+    turnX = clamp(wrapDeg(rawSensor.x - neutralSensor.x) / 18, -1, 1);
+    turnY = clamp(wrapDeg(rawSensor.y - neutralSensor.y) / 14, -1, 1);
   }
 });
 
@@ -424,10 +428,14 @@ document.getElementById('btnTilt').onclick = () => {
   if (tilt) { tilt = false; document.getElementById('btnTilt').textContent = 'ENABLE TILT'; }
   else enableTilt();
 };
+
+/* LEVEL BUTTON: Instantly recovers level horizon and clears gyro lock */
 document.getElementById('btnLevel').onclick = () => {
+  pitch = 0;
   neutralSensor = rawSensor ? { ...rawSensor } : null;
   turnX = turnY = 0;
 };
+
 document.getElementById('btnTarget').onclick = () => {
   targetIndex = (targetIndex + 1) % celestialBodies.length;
   document.getElementById('btnTarget').textContent = 'TARGET: ' + celestialBodies[targetIndex].name.replace('AETHEL-','');
@@ -491,16 +499,18 @@ function frame(t) {
     hazeEl.style.background = 'transparent';
   }
 
-  // Steering: Tilt Back = Look Up
+  // Steering: Tilt Back = Look Up; Tilt Forward = Look Down
   if (active && !landed) {
     let steerX = (keys['arrowright'] || keys['d'] ? 1 : 0) - (keys['arrowleft'] || keys['a'] ? 1 : 0);
     let steerY = (keys['arrowup'] || keys['w'] ? 1 : 0) - (keys['arrowdown'] || keys['s'] ? 1 : 0);
-    if (tilt) {
-      steerX += Math.abs(turnX) < 0.06 ? 0 : turnX;
-      steerY += Math.abs(turnY) < 0.06 ? 0 : turnY * 1.3;
+    
+    if (tilt && !drag) {
+      steerX += Math.abs(turnX) < 0.05 ? 0 : turnX;
+      steerY += Math.abs(turnY) < 0.05 ? 0 : turnY * 1.4;
     }
+    
     yaw -= steerX * (inAtmosphere ? 1.1 : 0.85) * dt;
-    pitch = clamp(pitch + steerY * (inAtmosphere ? 0.95 : 0.85) * dt, -1.48, 1.48);
+    pitch = clamp(pitch + steerY * (inAtmosphere ? 1.15 : 0.95) * dt, -1.38, 1.38);
 
     if (held.thrust || keys['shift']) throttle = clamp(throttle + 0.35 * dt, 0, 1);
     if (held.brake || keys['control']) throttle = clamp(throttle - 0.65 * dt, 0, 1);
@@ -537,12 +547,17 @@ function frame(t) {
       landed = true;
       throttle = 0;
     } else if (!landed) {
-      // Bounce / ground collision
-      py += 5;
+      // Reposition above ground without hard lock
+      const upX = (px - targetObj.x) / distToTarget;
+      const upY = (py - targetObj.y) / distToTarget;
+      const upZ = (pz - targetObj.z) / distToTarget;
+      px = targetObj.x + upX * (targetPlanetRadius + 12);
+      py = targetObj.y + upY * (targetPlanetRadius + 12);
+      pz = targetObj.z + upZ * (targetPlanetRadius + 12);
     }
   }
 
-  // Starfield update (dims as atmosphere thickens)
+  // Starfield update
   const starAlpha = clamp(1.0 - atmosDensity * 1.2, 0, 1);
   const streak = 6 + velC * 240;
   for (let i = 0; i < N; i++) {
@@ -584,44 +599,38 @@ function frame(t) {
     }
   }
 
-  // TRUE SPHERICAL TERRAIN GRID (Wrapped around planet sphere)
+  // TRUE SPHERICAL TERRAIN GRID
   if (inAtmosphere && surfaceAltitude < 500) {
     let tIdx = 0;
     const R = targetPlanetRadius;
 
-    // Sub-ship radial normal from planet center
     const subX = (px - targetObj.x) / distToTarget;
     const subY = (py - targetObj.y) / distToTarget;
     const subZ = (pz - targetObj.z) / distToTarget;
 
-    // Build tangent coordinate frame on the planet surface
     let tempUp = [0, 1, 0];
     if (Math.abs(subY) > 0.92) tempUp = [1, 0, 0];
     
-    // Tangent X
     const txX = tempUp[1]*subZ - tempUp[2]*subY;
     const txY = tempUp[2]*subX - tempUp[0]*subZ;
     const txZ = tempUp[0]*subY - tempUp[1]*subX;
     const txLen = Math.hypot(txX, txY, txZ) || 1;
     const tangX = [txX/txLen, txY/txLen, txZ/txLen];
 
-    // Tangent Z
     const tangZ = [
       subY*tangX[2] - subZ*tangX[1],
       subZ*tangX[0] - subX*tangX[2],
       subX*tangX[1] - subY*tangX[0]
     ];
 
-    const maxAngle = Math.min(1.2, 0.45 + (surfaceAltitude / R) * 0.85); // Angular field of view around sphere
+    const maxAngle = Math.min(1.2, 0.45 + (surfaceAltitude / R) * 0.85);
     const stepAngle = (maxAngle * 2) / GRID_SIZE;
 
-    // Helper to calculate 3D sphere vertex with elevation
     function getSpherePoint(gu, gv) {
       const u = (gu - GRID_SIZE / 2) * stepAngle;
       const v = (gv - GRID_SIZE / 2) * stepAngle;
       const radDist = Math.hypot(u, v);
       
-      // Radial direction on unit sphere
       const dirX = subX + tangX[0] * u + tangZ[0] * v;
       const dirY = subY + tangX[1] * u + tangZ[1] * v;
       const dirZ = subZ + tangX[2] * u + tangZ[2] * v;
@@ -635,7 +644,6 @@ function frame(t) {
       const wy = targetObj.y + ny * radius;
       const wz = targetObj.z + nz * radius;
 
-      // Horizon edge fade (lines smoothly disappear at sphere horizon edge)
       const edgeAlpha = clamp(1.0 - (radDist / maxAngle), 0, 1) * 0.75;
 
       return {
