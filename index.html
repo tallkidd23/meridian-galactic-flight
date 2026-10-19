@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>MERIDIAN GALACTIC FLIGHT — PHASE 3</title>
+<title>MERIDIAN GALACTIC FLIGHT — PHASE 3.5</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -149,7 +149,7 @@
 <div id="hud">
   <div id="tl" class="panel">
     <div>MERIDIAN GALACTIC FLIGHT</div>
-    <div class="dim">PHASE 3 // ATMOSPHERIC ENTRY &amp; TERRAIN</div>
+    <div class="dim">PHASE 3.5 // SPHERICAL PLANETARY TERRAIN</div>
   </div>
   <div id="tr" class="panel">
     <div>VEL <span id="vel">0.000</span> c | ALT <span id="alt" class="cyan">SPACE</span></div>
@@ -180,10 +180,10 @@
   <article>
     <h1>MERIDIAN // ATMOSPHERIC FLIGHT</h1>
     <p>
-      Phase 3 enables full atmospheric entry and procedural surface descent onto <strong>Aethel-Prime</strong>.<br><br>
-      • Lock onto Aethel-Prime and fire thrust to penetrate upper atmosphere.<br>
-      • Atmospheric drag slows your near-light drive into sub-orbital flight.<br>
-      • Terrain grid streams beneath your ship. Descend smoothly under 15 u/s to touch down!
+      Phase 3.5 integrates <strong>Spherical Planetary Curvature</strong> into the procedural terrain mesh.<br><br>
+      • Lock onto Aethel-Prime and descend into the atmosphere.<br>
+      • Watch mountain ranges and valleys curve naturally around the globe toward the horizon.<br>
+      • Edge-fading eliminates square mesh boundaries for seamless planetary realism.
     </p>
     <button class="launchBtn" id="launchTilt">LAUNCH (TILT)</button>
     <button class="launchSec" id="launchTouch">LAUNCH (TOUCH / KEYS)</button>
@@ -251,9 +251,8 @@ const sizes = new Float32Array(N);
 const points = new Float32Array(N * 8);
 const lines = new Float32Array(N * 16);
 
-/* Procedural Surface Terrain Mesh Data */
-const GRID_SIZE = 45;
-const TERRAIN_VERTS = (GRID_SIZE + 1) * (GRID_SIZE + 1);
+/* Spherical Surface Terrain Mesh Data */
+const GRID_SIZE = 50;
 const TERRAIN_LINES = (GRID_SIZE * (GRID_SIZE + 1) * 2) * 2;
 const terrainPoints = new Float32Array(TERRAIN_LINES * 8);
 
@@ -369,7 +368,7 @@ canvas.onpointerdown = e => {
 canvas.onpointermove = e => {
   if (!drag || tilt) return;
   yaw -= (e.clientX - drag.x) * 0.0035;
-  pitch -= (e.clientY - drag.y) * 0.0045; // Inverted drag pitch for natural looking up
+  pitch -= (e.clientY - drag.y) * 0.0045; // Aviation pitch (drag down = look up)
   drag = { x: e.clientX, y: e.clientY };
 };
 canvas.onpointerup = canvas.onpointercancel = () => drag = null;
@@ -377,7 +376,7 @@ canvas.onpointerup = canvas.onpointercancel = () => drag = null;
 addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key.startsWith('Arrow')) e.preventDefault(); });
 addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-/* Tilt Gyro Handling with Aviation Pitch Orientation (Tilt Back = Look Up) */
+/* Tilt Gyro Handling */
 function getOrientationMap(beta, gamma) {
   const angle = ((screen.orientation?.angle ?? window.orientation ?? 0) * Math.PI / 180);
   return {
@@ -434,7 +433,7 @@ document.getElementById('btnTarget').onclick = () => {
   document.getElementById('btnTarget').textContent = 'TARGET: ' + celestialBodies[targetIndex].name.replace('AETHEL-','');
 };
 
-/* 2D Canvas Overlay for Celestial Bodies & Atmosphere */
+/* 2D Canvas Overlay */
 const overlay = document.createElement('canvas');
 overlay.style.position = 'fixed';
 overlay.style.inset = '0';
@@ -450,11 +449,11 @@ function resizeOverlay() {
 addEventListener('resize', resizeOverlay);
 resizeOverlay();
 
-/* Procedural Noise for Terrain Elevation */
-function terrainHeight(worldX, worldZ) {
-  const s1 = Math.sin(worldX * 0.02) * Math.cos(worldZ * 0.02) * 18;
-  const s2 = Math.sin(worldX * 0.06 + 1.2) * Math.sin(worldZ * 0.06 + 0.8) * 8;
-  const s3 = Math.cos(worldX * 0.12) * Math.sin(worldZ * 0.12) * 3;
+/* Procedural Noise for Spherical Elevation */
+function sphericalTerrainHeight(nx, ny, nz) {
+  const s1 = Math.sin(nx * 8.0) * Math.cos(ny * 8.0) * Math.sin(nz * 8.0) * 16.0;
+  const s2 = Math.sin(nx * 18.0 + 1.2) * Math.sin(ny * 18.0 + 0.8) * Math.cos(nz * 18.0) * 7.0;
+  const s3 = Math.cos(nx * 36.0) * Math.sin(ny * 36.0) * Math.sin(nz * 36.0) * 3.0;
   return s1 + s2 + s3;
 }
 
@@ -492,13 +491,13 @@ function frame(t) {
     hazeEl.style.background = 'transparent';
   }
 
-  // Steering: Tilt Back / Stick Back = Look UP (Pitch Up)
+  // Steering: Tilt Back = Look Up
   if (active && !landed) {
     let steerX = (keys['arrowright'] || keys['d'] ? 1 : 0) - (keys['arrowleft'] || keys['a'] ? 1 : 0);
     let steerY = (keys['arrowup'] || keys['w'] ? 1 : 0) - (keys['arrowdown'] || keys['s'] ? 1 : 0);
     if (tilt) {
       steerX += Math.abs(turnX) < 0.06 ? 0 : turnX;
-      steerY += Math.abs(turnY) < 0.06 ? 0 : turnY * 1.3; // Inverted: tilt back pushes steerY positive -> pitch increases (look up)
+      steerY += Math.abs(turnY) < 0.06 ? 0 : turnY * 1.3;
     }
     yaw -= steerX * (inAtmosphere ? 1.1 : 0.85) * dt;
     pitch = clamp(pitch + steerY * (inAtmosphere ? 0.95 : 0.85) * dt, -1.48, 1.48);
@@ -585,33 +584,83 @@ function frame(t) {
     }
   }
 
-  // Procedural Terrain Grid Rendering (when near surface)
-  if (inAtmosphere && surfaceAltitude < 350) {
+  // TRUE SPHERICAL TERRAIN GRID (Wrapped around planet sphere)
+  if (inAtmosphere && surfaceAltitude < 500) {
     let tIdx = 0;
-    const step = 22;
-    const half = (GRID_SIZE * step) / 2;
-    const baseWorldX = Math.floor(px / step) * step;
-    const baseWorldZ = Math.floor(pz / step) * step;
-    const groundY = targetObj.y - targetPlanetRadius;
+    const R = targetPlanetRadius;
+
+    // Sub-ship radial normal from planet center
+    const subX = (px - targetObj.x) / distToTarget;
+    const subY = (py - targetObj.y) / distToTarget;
+    const subZ = (pz - targetObj.z) / distToTarget;
+
+    // Build tangent coordinate frame on the planet surface
+    let tempUp = [0, 1, 0];
+    if (Math.abs(subY) > 0.92) tempUp = [1, 0, 0];
+    
+    // Tangent X
+    const txX = tempUp[1]*subZ - tempUp[2]*subY;
+    const txY = tempUp[2]*subX - tempUp[0]*subZ;
+    const txZ = tempUp[0]*subY - tempUp[1]*subX;
+    const txLen = Math.hypot(txX, txY, txZ) || 1;
+    const tangX = [txX/txLen, txY/txLen, txZ/txLen];
+
+    // Tangent Z
+    const tangZ = [
+      subY*tangX[2] - subZ*tangX[1],
+      subZ*tangX[0] - subX*tangX[2],
+      subX*tangX[1] - subY*tangX[0]
+    ];
+
+    const maxAngle = Math.min(1.2, 0.45 + (surfaceAltitude / R) * 0.85); // Angular field of view around sphere
+    const stepAngle = (maxAngle * 2) / GRID_SIZE;
+
+    // Helper to calculate 3D sphere vertex with elevation
+    function getSpherePoint(gu, gv) {
+      const u = (gu - GRID_SIZE / 2) * stepAngle;
+      const v = (gv - GRID_SIZE / 2) * stepAngle;
+      const radDist = Math.hypot(u, v);
+      
+      // Radial direction on unit sphere
+      const dirX = subX + tangX[0] * u + tangZ[0] * v;
+      const dirY = subY + tangX[1] * u + tangZ[1] * v;
+      const dirZ = subZ + tangX[2] * u + tangZ[2] * v;
+      const dLen = Math.hypot(dirX, dirY, dirZ) || 1;
+      const nx = dirX / dLen, ny = dirY / dLen, nz = dirZ / dLen;
+
+      const elev = sphericalTerrainHeight(nx, ny, nz);
+      const radius = R + elev;
+
+      const wx = targetObj.x + nx * radius;
+      const wy = targetObj.y + ny * radius;
+      const wz = targetObj.z + nz * radius;
+
+      // Horizon edge fade (lines smoothly disappear at sphere horizon edge)
+      const edgeAlpha = clamp(1.0 - (radDist / maxAngle), 0, 1) * 0.75;
+
+      return {
+        x: wx - px,
+        y: wy - py,
+        z: wz - pz,
+        a: edgeAlpha
+      };
+    }
 
     for (let gx = 0; gx < GRID_SIZE; gx++) {
       for (let gz = 0; gz < GRID_SIZE; gz++) {
-        const wx1 = baseWorldX - half + gx * step;
-        const wz1 = baseWorldZ - half + gz * step;
-        const wx2 = wx1 + step;
-        const wz2 = wz1 + step;
+        const p1 = getSpherePoint(gx, gz);
+        const p2 = getSpherePoint(gx + 1, gz);
+        const p3 = getSpherePoint(gx, gz + 1);
 
-        const wy1 = groundY + terrainHeight(wx1, wz1);
-        const wy2 = groundY + terrainHeight(wx2, wz1);
-        const wy3 = groundY + terrainHeight(wx1, wz2);
+        if (p1.a > 0.02 || p2.a > 0.02) {
+          setVertex(terrainPoints, tIdx * 8, p1.x, p1.y, p1.z, 0.25, 0.85, 0.45, 1.0, p1.a); tIdx++;
+          setVertex(terrainPoints, tIdx * 8, p2.x, p2.y, p2.z, 0.25, 0.85, 0.45, 1.0, p2.a); tIdx++;
+        }
 
-        // Segment X
-        setVertex(terrainPoints, tIdx * 8, wx1 - px, wy1 - py, wz1 - pz, 0.3, 0.85, 0.45, 1.0, 0.65); tIdx++;
-        setVertex(terrainPoints, tIdx * 8, wx2 - px, wy2 - py, wz1 - pz, 0.3, 0.85, 0.45, 1.0, 0.65); tIdx++;
-
-        // Segment Z
-        setVertex(terrainPoints, tIdx * 8, wx1 - px, wy1 - py, wz1 - pz, 0.2, 0.70, 0.35, 1.0, 0.65); tIdx++;
-        setVertex(terrainPoints, tIdx * 8, wx1 - px, wy3 - py, wz2 - pz, 0.2, 0.70, 0.35, 1.0, 0.65); tIdx++;
+        if (p1.a > 0.02 || p3.a > 0.02) {
+          setVertex(terrainPoints, tIdx * 8, p1.x, p1.y, p1.z, 0.20, 0.70, 0.35, 1.0, p1.a); tIdx++;
+          setVertex(terrainPoints, tIdx * 8, p3.x, p3.y, p3.z, 0.20, 0.70, 0.35, 1.0, p3.a); tIdx++;
+        }
       }
     }
 
