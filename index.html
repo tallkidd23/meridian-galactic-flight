@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>MERIDIAN GALACTIC FLIGHT — PHASE 2</title>
+<title>MERIDIAN GALACTIC FLIGHT — PHASE 3</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -24,10 +24,15 @@
     position: fixed; inset: 0; pointer-events: none; z-index: 8;
     background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.12) 2px 4px);
   }
+  #atmosHaze {
+    position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    background: radial-gradient(circle at center, rgba(30,140,220,0.0) 0%, rgba(10,50,90,0.0) 100%);
+    transition: background 0.2s ease;
+  }
   #hud {
     position: fixed; inset: 0; pointer-events: none; z-index: 10;
     padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
-             max(60px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+             max(62px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
     text-shadow: 0 0 6px rgba(80,255,140,0.75);
     font-size: clamp(10px, 2.1vw, 14px);
     line-height: 1.28;
@@ -35,7 +40,7 @@
   .panel {
     position: absolute;
     border: 1px solid rgba(90,255,150,0.45);
-    background: rgba(0,14,6,0.65);
+    background: rgba(0,14,6,0.72);
     padding: 6px 10px;
     letter-spacing: 0.06em;
   }
@@ -47,6 +52,7 @@
   .warn { color: #ffd166; }
   .hot { color: #ff6b6b; }
   .cyan { color: #4deeea; }
+  .landed { color: #a8ffc4; text-shadow: 0 0 10px #7dff9a; font-weight: bold; }
 
   /* Crosshair */
   #crosshair {
@@ -68,7 +74,6 @@
     border: 1px dashed #4deeea;
     border-radius: 50%;
     box-shadow: 0 0 10px rgba(77,238,234,0.4);
-    transition: width 0.1s, height 0.1s;
   }
   #targetTag {
     position: absolute; left: 105%; top: 0;
@@ -138,24 +143,25 @@
 <body>
 
 <canvas id="space"></canvas>
+<div id="atmosHaze"></div>
 <div id="scanlines"></div>
 
 <div id="hud">
   <div id="tl" class="panel">
     <div>MERIDIAN GALACTIC FLIGHT</div>
-    <div class="dim">PHASE 2 // TARGET LOCK & APPROACH</div>
+    <div class="dim">PHASE 3 // ATMOSPHERIC ENTRY &amp; TERRAIN</div>
   </div>
   <div id="tr" class="panel">
-    <div>VEL <span id="vel">0.000</span> c</div>
-    <div class="dim">THR <span id="thr">0</span>%</div>
+    <div>VEL <span id="vel">0.000</span> c | ALT <span id="alt" class="cyan">SPACE</span></div>
+    <div class="dim">THR <span id="thr">0</span>% | V-SPEED <span id="vspeed">0.0</span> u/s</div>
   </div>
   <div id="bl" class="panel">
     <div>HDG <span id="hdg">000.0 / +00.0</span></div>
-    <div class="dim">SECTOR <span id="pos">0 : 0 : 0</span></div>
+    <div class="dim">FLIGHT MODE: <span id="flightMode" class="cyan">ORBITAL DRIVE</span></div>
   </div>
   <div id="br" class="panel">
     <div>LOCK: <span id="tgtName" class="cyan">AETHEL-PRIME</span></div>
-    <div class="dim">DIST: <span id="tgtDist" class="cyan">--</span> u | CLOSING: <span id="tgtClose">--</span></div>
+    <div class="dim">DIST: <span id="tgtDist" class="cyan">--</span> u | STATUS: <span id="landingStatus">IN CRUISE</span></div>
   </div>
 </div>
 
@@ -172,12 +178,12 @@
 
 <div id="menu">
   <article>
-    <h1>MERIDIAN // SYSTEM APPROACH</h1>
+    <h1>MERIDIAN // ATMOSPHERIC FLIGHT</h1>
     <p>
-      Phase 2 initializes the <strong>Aethel System</strong>: a radiant solar beacon orbited by an oceanic terran world and a scorched outer moon.<br><br>
-      • Lock onto planets using the <strong>TARGET</strong> button or direct screen tap.<br>
-      • Align your crosshair with the target reticle.<br>
-      • Fire thrust to close distance. Watch the atmosphere expand in real time.
+      Phase 3 enables full atmospheric entry and procedural surface descent onto <strong>Aethel-Prime</strong>.<br><br>
+      • Lock onto Aethel-Prime and fire thrust to penetrate upper atmosphere.<br>
+      • Atmospheric drag slows your near-light drive into sub-orbital flight.<br>
+      • Terrain grid streams beneath your ship. Descend smoothly under 15 u/s to touch down!
     </p>
     <button class="launchBtn" id="launchTilt">LAUNCH (TILT)</button>
     <button class="launchSec" id="launchTouch">LAUNCH (TOUCH / KEYS)</button>
@@ -245,12 +251,22 @@ const sizes = new Float32Array(N);
 const points = new Float32Array(N * 8);
 const lines = new Float32Array(N * 16);
 
+/* Procedural Surface Terrain Mesh Data */
+const GRID_SIZE = 45;
+const TERRAIN_VERTS = (GRID_SIZE + 1) * (GRID_SIZE + 1);
+const TERRAIN_LINES = (GRID_SIZE * (GRID_SIZE + 1) * 2) * 2;
+const terrainPoints = new Float32Array(TERRAIN_LINES * 8);
+
 const pb = gl.createBuffer();
 const lb = gl.createBuffer();
+const tb = gl.createBuffer();
+
 gl.bindBuffer(gl.ARRAY_BUFFER, pb);
 gl.bufferData(gl.ARRAY_BUFFER, points.byteLength, gl.DYNAMIC_DRAW);
 gl.bindBuffer(gl.ARRAY_BUFFER, lb);
 gl.bufferData(gl.ARRAY_BUFFER, lines.byteLength, gl.DYNAMIC_DRAW);
+gl.bindBuffer(gl.ARRAY_BUFFER, tb);
+gl.bufferData(gl.ARRAY_BUFFER, terrainPoints.byteLength, gl.DYNAMIC_DRAW);
 
 const attrs = ['p','c','s','a'].map(n => gl.getAttribLocation(prog, n));
 const uniforms = {};
@@ -271,8 +287,8 @@ gl.disable(gl.DEPTH_TEST);
 /* Solar System Objects */
 const celestialBodies = [
   { name: "AETHEL-SUN",  x: 0,     y: 0,     z: -18000, r: 850, cr: 1.0, cg: 0.9, cb: 0.35, orbitR: 0,     orbitSpeed: 0 },
-  { name: "AETHEL-PRIME",x: 3800,  y: 400,   z: -16500, r: 240, cr: 0.2, cg: 0.7, cb: 1.00, orbitR: 4200, orbitSpeed: 0.04, atmosColor: [0.1, 0.8, 1.0] },
-  { name: "AETHEL-II",   x: -6200, y: -800,  z: -19800, r: 170, cr: 1.0, cg: 0.4, cb: 0.20, orbitR: 6800, orbitSpeed: 0.025, atmosColor: [1.0, 0.5, 0.2] }
+  { name: "AETHEL-PRIME",x: 3800,  y: 400,   z: -16500, r: 350, cr: 0.2, cg: 0.7, cb: 1.00, orbitR: 4200, orbitSpeed: 0.04, atmosColor: [0.1, 0.8, 1.0], atmosRadius: 1100 },
+  { name: "AETHEL-II",   x: -6200, y: -800,  z: -19800, r: 170, cr: 1.0, cg: 0.4, cb: 0.20, orbitR: 6800, orbitSpeed: 0.025, atmosColor: [1.0, 0.5, 0.2], atmosRadius: 600 }
 ];
 let targetIndex = 1;
 
@@ -287,6 +303,10 @@ let turnX = 0, turnY = 0;
 let drag = null;
 let lastTime = 0, fps = 60;
 let right = [1,0,0], up = [0,1,0], forward = [0,0,-1], back = [0,0,1];
+let landed = false;
+let verticalSpeed = 0;
+let surfaceAltitude = 99999;
+let inAtmosphere = false;
 
 function rand(a, b) { return a + Math.random() * (b - a); }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -349,7 +369,7 @@ canvas.onpointerdown = e => {
 canvas.onpointermove = e => {
   if (!drag || tilt) return;
   yaw -= (e.clientX - drag.x) * 0.0035;
-  pitch += (e.clientY - drag.y) * 0.0035;
+  pitch += (e.clientY - drag.y) * 0.0045; // Enhanced pitch responsiveness
   drag = { x: e.clientX, y: e.clientY };
 };
 canvas.onpointerup = canvas.onpointercancel = () => drag = null;
@@ -357,7 +377,7 @@ canvas.onpointerup = canvas.onpointercancel = () => drag = null;
 addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key.startsWith('Arrow')) e.preventDefault(); });
 addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-/* Tilt Gyro Handling */
+/* Tilt Gyro Handling with Enhanced Vertical Pitch Sensitivity */
 function getOrientationMap(beta, gamma) {
   const angle = ((screen.orientation?.angle ?? window.orientation ?? 0) * Math.PI / 180);
   return {
@@ -372,8 +392,8 @@ addEventListener('deviceorientation', e => {
   rawSensor = getOrientationMap(e.beta, e.gamma);
   if (tilt && !neutralSensor) neutralSensor = { ...rawSensor };
   if (neutralSensor) {
-    turnX = clamp(wrapDeg(rawSensor.x - neutralSensor.x) / 22, -1, 1);
-    turnY = clamp(wrapDeg(rawSensor.y - neutralSensor.y) / 22, -1, 1);
+    turnX = clamp(wrapDeg(rawSensor.x - neutralSensor.x) / 20, -1, 1);
+    turnY = clamp(wrapDeg(rawSensor.y - neutralSensor.y) / 16, -1, 1); // 25% tighter threshold for pitch
   }
 });
 
@@ -430,29 +450,58 @@ function resizeOverlay() {
 addEventListener('resize', resizeOverlay);
 resizeOverlay();
 
-/* Main Game Loop */
-function setVertex(arr, o, i, x, y, z, a) {
-  const k = i * 3;
-  arr[o]   = x; arr[o+1] = y; arr[o+2] = z;
-  arr[o+3] = colors[k]; arr[o+4] = colors[k+1]; arr[o+5] = colors[k+2];
-  arr[o+6] = sizes[i]; arr[o+7] = a;
+/* Procedural Noise for Terrain Elevation */
+function terrainHeight(worldX, worldZ) {
+  const s1 = Math.sin(worldX * 0.02) * Math.cos(worldZ * 0.02) * 18;
+  const s2 = Math.sin(worldX * 0.06 + 1.2) * Math.sin(worldZ * 0.06 + 0.8) * 8;
+  const s3 = Math.cos(worldX * 0.12) * Math.sin(worldZ * 0.12) * 3;
+  return s1 + s2 + s3;
 }
 
+/* Vertex helper */
+function setVertex(arr, o, x, y, z, r, g, b, size, a) {
+  arr[o]   = x; arr[o+1] = y; arr[o+2] = z;
+  arr[o+3] = r; arr[o+4] = g; arr[o+5] = b;
+  arr[o+6] = size; arr[o+7] = a;
+}
+
+/* Main Flight Loop */
 function frame(t) {
   requestAnimationFrame(frame);
   const dt = lastTime ? Math.min((t - lastTime) / 1000, 0.04) : 0.016;
   lastTime = t;
   fps += (1 / dt - fps) * 0.05;
 
-  if (active) {
+  const targetObj = celestialBodies[targetIndex];
+  const distToTarget = Math.hypot(targetObj.x - px, targetObj.y - py, targetObj.z - pz);
+  const targetPlanetRadius = targetObj.r || 350;
+  surfaceAltitude = Math.max(0, distToTarget - targetPlanetRadius);
+
+  // Atmospheric status
+  inAtmosphere = (targetObj.atmosRadius && distToTarget < targetObj.atmosRadius);
+  const atmosDensity = inAtmosphere ? clamp((targetObj.atmosRadius - distToTarget) / (targetObj.atmosRadius - targetPlanetRadius), 0, 1) : 0;
+
+  // Visual Atmosphere Haze
+  const hazeEl = document.getElementById('atmosHaze');
+  if (inAtmosphere) {
+    const r = Math.round(targetObj.atmosColor[0] * 255);
+    const g = Math.round(targetObj.atmosColor[1] * 255);
+    const b = Math.round(targetObj.atmosColor[2] * 255);
+    hazeEl.style.background = `radial-gradient(circle at center, rgba(${r},${g},${b},${atmosDensity * 0.45}) 0%, rgba(${r*0.4},${g*0.4},${b*0.4},${atmosDensity * 0.85}) 100%)`;
+  } else {
+    hazeEl.style.background = 'transparent';
+  }
+
+  // Steering
+  if (active && !landed) {
     let steerX = (keys['arrowright'] || keys['d'] ? 1 : 0) - (keys['arrowleft'] || keys['a'] ? 1 : 0);
     let steerY = (keys['arrowup'] || keys['w'] ? 1 : 0) - (keys['arrowdown'] || keys['s'] ? 1 : 0);
     if (tilt) {
       steerX += Math.abs(turnX) < 0.06 ? 0 : turnX;
-      steerY += Math.abs(turnY) < 0.06 ? 0 : -turnY;
+      steerY += Math.abs(turnY) < 0.06 ? 0 : -turnY * 1.3; // Boosted vertical gyro response
     }
-    yaw -= steerX * 0.85 * dt;
-    pitch = clamp(pitch + steerY * 0.75 * dt, -1.48, 1.48);
+    yaw -= steerX * (inAtmosphere ? 1.1 : 0.85) * dt;
+    pitch = clamp(pitch + steerY * (inAtmosphere ? 0.95 : 0.85) * dt, -1.48, 1.48);
 
     if (held.thrust || keys['shift']) throttle = clamp(throttle + 0.35 * dt, 0, 1);
     if (held.brake || keys['control']) throttle = clamp(throttle - 0.65 * dt, 0, 1);
@@ -460,15 +509,42 @@ function frame(t) {
 
   updateBasis();
 
-  // Speed scaling (slow cruise to 0.990c)
-  const velC = 0.99 * Math.pow(throttle, 1.6);
-  const moveUnits = active ? (20 + velC * 6500) * dt : 0;
+  // Speed & Flight Mode Scaling
+  let maxSpeedC = inAtmosphere ? (0.015 * (1 - atmosDensity * 0.85)) : 0.99;
+  let velC = maxSpeedC * Math.pow(throttle, 1.6);
+  let moveUnits = active && !landed ? (15 + velC * (inAtmosphere ? 800 : 6500)) * dt : 0;
 
-  px += forward[0] * moveUnits;
-  py += forward[1] * moveUnits;
-  pz += forward[2] * moveUnits;
+  // Planetary Gravity in atmosphere
+  if (inAtmosphere && !landed) {
+    const gx = (targetObj.x - px) / distToTarget;
+    const gy = (targetObj.y - py) / distToTarget;
+    const gz = (targetObj.z - pz) / distToTarget;
+    const gravForce = 18 * atmosDensity * dt;
+    px += gx * gravForce;
+    py += gy * gravForce;
+    pz += gz * gravForce;
+  }
 
-  // Starfield update
+  if (!landed) {
+    px += forward[0] * moveUnits;
+    py += forward[1] * moveUnits;
+    pz += forward[2] * moveUnits;
+  }
+
+  // Altitude & Landing Logic
+  verticalSpeed = moveUnits * forward[1];
+  if (inAtmosphere && surfaceAltitude <= 8) {
+    if (Math.abs(verticalSpeed) < 18 && throttle < 0.25) {
+      landed = true;
+      throttle = 0;
+    } else if (!landed) {
+      // Bounce / ground collision
+      py += 5;
+    }
+  }
+
+  // Starfield update (dims as atmosphere thickens)
+  const starAlpha = clamp(1.0 - atmosDensity * 1.2, 0, 1);
   const streak = 6 + velC * 240;
   for (let i = 0; i < N; i++) {
     const k = i * 3;
@@ -483,9 +559,9 @@ function frame(t) {
     const relY = positions[k+1] - py;
     const relZ = positions[k+2] - pz;
 
-    setVertex(points, i * 8, i, relX, relY, relZ, 1.0);
-    setVertex(lines, i * 16, i, relX, relY, relZ, Math.min(0.7, velC * 2.2));
-    setVertex(lines, i * 16 + 8, i, relX + forward[0] * streak, relY + forward[1] * streak, relZ + forward[2] * streak, 0.0);
+    setVertex(points, i * 8, relX, relY, relZ, colors[k], colors[k+1], colors[k+2], sizes[i], starAlpha);
+    setVertex(lines, i * 16, relX, relY, relZ, colors[k], colors[k+1], colors[k+2], sizes[i], Math.min(0.7 * starAlpha, velC * 2.2));
+    setVertex(lines, i * 16 + 8, relX + forward[0] * streak, relY + forward[1] * streak, relZ + forward[2] * streak, colors[k], colors[k+1], colors[k+2], sizes[i], 0.0);
   }
 
   // WebGL Render
@@ -497,17 +573,54 @@ function frame(t) {
   gl.uniform3fv(uniforms.back, back);
   gl.uniform1f(uniforms.aspect, canvas.width / canvas.height);
 
-  bindBuffer(pb);
-  gl.bufferSubData(gl.ARRAY_BUFFER, 0, points);
-  gl.drawArrays(gl.POINTS, 0, N);
+  if (starAlpha > 0.01) {
+    bindBuffer(pb);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, points);
+    gl.drawArrays(gl.POINTS, 0, N);
 
-  if (velC > 0.004) {
-    bindBuffer(lb);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, lines);
-    gl.drawArrays(gl.LINES, 0, N * 2);
+    if (velC > 0.004) {
+      bindBuffer(lb);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, lines);
+      gl.drawArrays(gl.LINES, 0, N * 2);
+    }
   }
 
-  // Orbit & Atmosphere Simulation
+  // Procedural Terrain Grid Rendering (when near surface)
+  if (inAtmosphere && surfaceAltitude < 350) {
+    let tIdx = 0;
+    const step = 22;
+    const half = (GRID_SIZE * step) / 2;
+    const baseWorldX = Math.floor(px / step) * step;
+    const baseWorldZ = Math.floor(pz / step) * step;
+    const groundY = targetObj.y - targetPlanetRadius;
+
+    for (let gx = 0; gx < GRID_SIZE; gx++) {
+      for (let gz = 0; gz < GRID_SIZE; gz++) {
+        const wx1 = baseWorldX - half + gx * step;
+        const wz1 = baseWorldZ - half + gz * step;
+        const wx2 = wx1 + step;
+        const wz2 = wz1 + step;
+
+        const wy1 = groundY + terrainHeight(wx1, wz1);
+        const wy2 = groundY + terrainHeight(wx2, wz1);
+        const wy3 = groundY + terrainHeight(wx1, wz2);
+
+        // Segment X
+        setVertex(terrainPoints, tIdx * 8, wx1 - px, wy1 - py, wz1 - pz, 0.3, 0.85, 0.45, 1.0, 0.65); tIdx++;
+        setVertex(terrainPoints, tIdx * 8, wx2 - px, wy2 - py, wz1 - pz, 0.3, 0.85, 0.45, 1.0, 0.65); tIdx++;
+
+        // Segment Z
+        setVertex(terrainPoints, tIdx * 8, wx1 - px, wy1 - py, wz1 - pz, 0.2, 0.70, 0.35, 1.0, 0.65); tIdx++;
+        setVertex(terrainPoints, tIdx * 8, wx1 - px, wy3 - py, wz2 - pz, 0.2, 0.70, 0.35, 1.0, 0.65); tIdx++;
+      }
+    }
+
+    bindBuffer(tb);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, terrainPoints);
+    gl.drawArrays(gl.LINES, 0, tIdx);
+  }
+
+  // 2D Overlay: Planet Spheres & Reticle
   ctx.clearRect(0, 0, overlay.width, overlay.height);
 
   const cx = overlay.width / 2;
@@ -515,7 +628,6 @@ function frame(t) {
   const fovFactor = (overlay.height / 2) * 1.35;
 
   let lockedScreen = null;
-  const targetObj = celestialBodies[targetIndex];
 
   celestialBodies.forEach((b, idx) => {
     if (b.orbitSpeed > 0) {
@@ -528,14 +640,13 @@ function frame(t) {
     const ry = b.y - py;
     const rz = b.z - pz;
 
-    // View space transform
     const vx = rx * right[0] + ry * right[1] + rz * right[2];
     const vy = rx * up[0]    + ry * up[1]    + rz * up[2];
     const vz = rx * back[0]  + ry * back[1]  + rz * back[2];
 
     const dist = Math.hypot(rx, ry, rz);
 
-    if (vz < -5) { // In front of camera
+    if (vz < -5) {
       const depth = -vz;
       const sx = cx + (vx / depth) * fovFactor;
       const sy = cy - (vy / depth) * fovFactor;
@@ -545,8 +656,7 @@ function frame(t) {
         lockedScreen = { sx, sy, screenRadius, dist, name: b.name };
       }
 
-      // Draw Planet / Star Sphere
-      if (screenRadius > 1) {
+      if (screenRadius > 1 && (!inAtmosphere || idx !== targetIndex)) {
         const grad = ctx.createRadialGradient(sx - screenRadius*0.25, sy - screenRadius*0.25, screenRadius*0.1, sx, sy, screenRadius);
         grad.addColorStop(0, `rgb(${Math.round(b.cr*255)}, ${Math.round(b.cg*255)}, ${Math.round(b.cb*255)})`);
         grad.addColorStop(0.8, `rgb(${Math.round(b.cr*160)}, ${Math.round(b.cg*160)}, ${Math.round(b.cb*160)})`);
@@ -557,7 +667,6 @@ function frame(t) {
         ctx.arc(sx, sy, screenRadius, 0, Math.PI * 2);
         ctx.fill();
 
-        // Atmospheric Halo
         if (b.atmosColor) {
           const atmosR = screenRadius * 1.35;
           const atmosGrad = ctx.createRadialGradient(sx, sy, screenRadius * 0.9, sx, sy, atmosR);
@@ -572,7 +681,7 @@ function frame(t) {
     }
   });
 
-  // Target Reticle Update
+  // Target Reticle
   const reticle = document.getElementById('targetReticle');
   const tag = document.getElementById('targetTag');
   if (lockedScreen && lockedScreen.sx > -50 && lockedScreen.sx < overlay.width + 50 &&
@@ -591,15 +700,31 @@ function frame(t) {
   // HUD Text Update
   document.getElementById('vel').textContent = velC.toFixed(3);
   document.getElementById('thr').textContent = Math.round(throttle * 100);
+  document.getElementById('alt').textContent = inAtmosphere ? `${Math.round(surfaceAltitude)} u` : 'ORBIT';
+  document.getElementById('vspeed').textContent = `${(verticalSpeed >= 0 ? '+' : '')}${verticalSpeed.toFixed(1)}`;
+  
   const yawDeg = ((yaw * 180 / Math.PI) % 360 + 360) % 360;
   const pitchDeg = pitch * 180 / Math.PI;
   document.getElementById('hdg').textContent = `${yawDeg.toFixed(1).padStart(5,'0')} / ${pitchDeg>=0?'+':''}${pitchDeg.toFixed(1)}`;
-  document.getElementById('pos').textContent = `${Math.round(px/100)} : ${Math.round(py/100)} : ${Math.round(pz/100)}`;
   
-  const targetDist = Math.hypot(targetObj.x - px, targetObj.y - py, targetObj.z - pz);
+  document.getElementById('flightMode').textContent = landed ? 'LANDED ON SURFACE' : inAtmosphere ? 'ATMOSPHERIC ENTRY' : 'DEEP FIELD DRIVE';
   document.getElementById('tgtName').textContent = targetObj.name;
-  document.getElementById('tgtDist').textContent = Math.round(targetDist);
-  document.getElementById('tgtClose').textContent = (velC * 6500).toFixed(0) + ' u/s';
+  document.getElementById('tgtDist').textContent = Math.round(distToTarget);
+
+  const statusEl = document.getElementById('landingStatus');
+  if (landed) {
+    statusEl.textContent = 'TOUCHDOWN CONFIRMED';
+    statusEl.className = 'landed';
+  } else if (inAtmosphere && surfaceAltitude < 60) {
+    statusEl.textContent = 'FINAL DESCENT';
+    statusEl.className = 'hot';
+  } else if (inAtmosphere) {
+    statusEl.textContent = 'AEROBRAKING';
+    statusEl.className = 'warn';
+  } else {
+    statusEl.textContent = 'IN CRUISE';
+    statusEl.className = 'cyan';
+  }
 }
 
 requestAnimationFrame(frame);
