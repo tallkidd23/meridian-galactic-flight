@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>MERIDIAN GALACTIC FLIGHT — PHASE 2</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #000206;
+    font-family: "Courier New", Courier, monospace;
+    color: #7dff9a;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  #space {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    display: block;
+    background: #000206;
+  }
+  #scanlines {
+    position: fixed; inset: 0; pointer-events: none; z-index: 8;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.12) 2px 4px);
+  }
+  #hud {
+    position: fixed; inset: 0; pointer-events: none; z-index: 10;
+    padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
+             max(60px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+    text-shadow: 0 0 6px rgba(80,255,140,0.75);
+    font-size: clamp(10px, 2.1vw, 14px);
+    line-height: 1.28;
+  }
+  .panel {
+    position: absolute;
+    border: 1px solid rgba(90,255,150,0.45);
+    background: rgba(0,14,6,0.65);
+    padding: 6px 10px;
+    letter-spacing: 0.06em;
+  }
+  #tl { top: 8px; left: 10px; }
+  #tr { top: 8px; right: 10px; text-align: right; }
+  #bl { bottom: 62px; left: 10px; }
+  #br { bottom: 62px; right: 10px; text-align: right; }
+  .dim { color: #4fd489; opacity: 0.8; }
+  .warn { color: #ffd166; }
+  .hot { color: #ff6b6b; }
+  .cyan { color: #4deeea; }
+
+  /* Crosshair */
+  #crosshair {
+    position: fixed; left: 50%; top: 50%; width: 30px; height: 30px;
+    transform: translate(-50%, -50%);
+    pointer-events: none; z-index: 10; opacity: 0.75;
+  }
+  #crosshair::before, #crosshair::after {
+    content: ""; position: absolute; background: #7dff9a;
+    box-shadow: 0 0 5px #7dff9a;
+  }
+  #crosshair::before { left: 50%; top: 0; width: 1px; height: 100%; transform: translateX(-50%); }
+  #crosshair::after { top: 50%; left: 0; height: 1px; width: 100%; transform: translateY(-50%); }
+
+  /* Target Reticle */
+  #targetReticle {
+    position: fixed; display: none; pointer-events: none; z-index: 12;
+    transform: translate(-50%, -50%);
+    border: 1px dashed #4deeea;
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(77,238,234,0.4);
+    transition: width 0.1s, height 0.1s;
+  }
+  #targetTag {
+    position: absolute; left: 105%; top: 0;
+    white-space: nowrap; color: #4deeea; font-size: 11px;
+    text-shadow: 0 0 6px #4deeea;
+  }
+
+  /* Controls bar */
+  #controls {
+    position: fixed; bottom: 8px; left: 8px; right: 8px; z-index: 15;
+    display: flex; gap: 8px; justify-content: space-between;
+  }
+  .btn {
+    flex: 1; min-height: 44px;
+    font-family: inherit; font-size: clamp(11px, 2.5vw, 13px);
+    color: #8affac; background: rgba(0, 24, 10, 0.85);
+    border: 1px solid rgba(90, 255, 150, 0.5);
+    padding: 8px 6px; letter-spacing: 0.08em;
+    cursor: pointer; touch-action: none;
+  }
+  .btn.active {
+    background: rgba(30, 110, 55, 0.9);
+    box-shadow: 0 0 12px rgba(100, 255, 160, 0.6);
+  }
+
+  /* Modal / Menu */
+  #menu {
+    position: fixed; inset: 0; z-index: 25;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at center, rgba(0, 18, 8, 0.94), rgba(0, 2, 5, 0.98));
+    text-align: center; padding: 20px;
+  }
+  #menu article { max-width: 580px; }
+  #menu h1 {
+    font-size: clamp(18px, 4.8vw, 30px); color: #a8ffc4;
+    text-shadow: 0 0 14px rgba(110,255,170,0.8);
+    margin-bottom: 12px;
+  }
+  #menu p {
+    font-size: clamp(11px, 2.4vw, 14px); color: #74d996; line-height: 1.6;
+    margin-bottom: 16px;
+  }
+  .launchBtn {
+    font-family: inherit; font-size: 14px;
+    color: #04140a; background: #63ff9d;
+    border: 0; padding: 12px 22px; letter-spacing: 0.12em;
+    box-shadow: 0 0 18px rgba(90,255,150,0.5);
+    cursor: pointer; margin: 4px;
+  }
+  .launchSec {
+    font-family: inherit; font-size: 14px;
+    color: #7dff9a; background: transparent;
+    border: 1px solid rgba(125,255,154,0.6);
+    padding: 12px 20px; letter-spacing: 0.12em;
+    cursor: pointer; margin: 4px;
+  }
+  #rotatePrompt {
+    display: none; position: fixed; inset: 0; z-index: 30;
+    align-items: center; justify-content: center; text-align: center;
+    background: #000305; color: #ffe3a1; font-size: 18px; padding: 30px;
+  }
+  @media (orientation: portrait) {
+    #rotatePrompt { display: flex; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="space"></canvas>
+<div id="scanlines"></div>
+
+<div id="hud">
+  <div id="tl" class="panel">
+    <div>MERIDIAN GALACTIC FLIGHT</div>
+    <div class="dim">PHASE 2 // TARGET LOCK & APPROACH</div>
+  </div>
+  <div id="tr" class="panel">
+    <div>VEL <span id="vel">0.000</span> c</div>
+    <div class="dim">THR <span id="thr">0</span>%</div>
+  </div>
+  <div id="bl" class="panel">
+    <div>HDG <span id="hdg">000.0 / +00.0</span></div>
+    <div class="dim">SECTOR <span id="pos">0 : 0 : 0</span></div>
+  </div>
+  <div id="br" class="panel">
+    <div>LOCK: <span id="tgtName" class="cyan">AETHEL-PRIME</span></div>
+    <div class="dim">DIST: <span id="tgtDist" class="cyan">--</span> u | CLOSING: <span id="tgtClose">--</span></div>
+  </div>
+</div>
+
+<div id="crosshair"></div>
+<div id="targetReticle"><div id="targetTag"></div></div>
+
+<div id="controls">
+  <button class="btn" id="btnBrake">RETRO −</button>
+  <button class="btn" id="btnTarget">TARGET: AETHEL</button>
+  <button class="btn" id="btnTilt">ENABLE TILT</button>
+  <button class="btn" id="btnLevel">LEVEL</button>
+  <button class="btn" id="btnThrust">THRUST +</button>
+</div>
+
+<div id="menu">
+  <article>
+    <h1>MERIDIAN // SYSTEM APPROACH</h1>
+    <p>
+      Phase 2 initializes the <strong>Aethel System</strong>: a radiant solar beacon orbited by an oceanic terran world and a scorched outer moon.<br><br>
+      • Lock onto planets using the <strong>TARGET</strong> button or direct screen tap.<br>
+      • Align your crosshair with the target reticle.<br>
+      • Fire thrust to close distance. Watch the atmosphere expand in real time.
+    </p>
+    <button class="launchBtn" id="launchTilt">LAUNCH (TILT)</button>
+    <button class="launchSec" id="launchTouch">LAUNCH (TOUCH / KEYS)</button>
+  </article>
+</div>
+
+<div id="rotatePrompt">⟳ ROTATE TO LANDSCAPE FOR FLIGHT ⟳</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById("space");
+const gl = canvas.getContext("webgl", { alpha: false, antialias: false, powerPreference: "high-performance" });
+if (!gl) alert("WebGL is required for deep-space flight.");
+
+/* Shaders */
+const vs = `
+attribute vec3 p;
+attribute vec3 c;
+attribute float s;
+attribute float a;
+uniform vec3 right;
+uniform vec3 up;
+uniform vec3 back;
+uniform float aspect;
+varying vec3 color;
+varying float alpha;
+void main() {
+  vec3 q = vec3(dot(p, right), dot(p, up), dot(p, back));
+  float f = 1.35;
+  gl_Position = vec4(q.x * f / aspect, q.y * f, -1.0002 * q.z - 0.4, -q.z);
+  gl_PointSize = s;
+  color = c;
+  alpha = a;
+}
+`;
+const fs = `
+precision mediump float;
+varying vec3 color;
+varying float alpha;
+void main() {
+  gl_FragColor = vec4(color, alpha);
+}
+`;
+
+function makeShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw Error(gl.getShaderInfoLog(s));
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, makeShader(gl.VERTEX_SHADER, vs));
+gl.attachShader(prog, makeShader(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+/* Starfield Data */
+const N = 6500;
+const positions = new Float32Array(N * 3);
+const colors = new Float32Array(N * 3);
+const sizes = new Float32Array(N);
+const points = new Float32Array(N * 8);
+const lines = new Float32Array(N * 16);
+
+const pb = gl.createBuffer();
+const lb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, pb);
+gl.bufferData(gl.ARRAY_BUFFER, points.byteLength, gl.DYNAMIC_DRAW);
+gl.bindBuffer(gl.ARRAY_BUFFER, lb);
+gl.bufferData(gl.ARRAY_BUFFER, lines.byteLength, gl.DYNAMIC_DRAW);
+
+const attrs = ['p','c','s','a'].map(n => gl.getAttribLocation(prog, n));
+const uniforms = {};
+['right','up','back','aspect'].forEach(n => uniforms[n] = gl.getUniformLocation(prog, n));
+
+function bindBuffer(buf) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  [3, 3, 1, 1].forEach((count, idx) => {
+    gl.enableVertexAttribArray(attrs[idx]);
+    gl.vertexAttribPointer(attrs[idx], count, gl.FLOAT, false, 32, [0, 12, 24, 28][idx]);
+  });
+}
+
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+gl.disable(gl.DEPTH_TEST);
+
+/* Solar System Objects */
+const celestialBodies = [
+  { name: "AETHEL-SUN",  x: 0,     y: 0,     z: -18000, r: 850, cr: 1.0, cg: 0.9, cb: 0.35, orbitR: 0,     orbitSpeed: 0 },
+  { name: "AETHEL-PRIME",x: 3800,  y: 400,   z: -16500, r: 240, cr: 0.2, cg: 0.7, cb: 1.00, orbitR: 4200, orbitSpeed: 0.04, atmosColor: [0.1, 0.8, 1.0] },
+  { name: "AETHEL-II",   x: -6200, y: -800,  z: -19800, r: 170, cr: 1.0, cg: 0.4, cb: 0.20, orbitR: 6800, orbitSpeed: 0.025, atmosColor: [1.0, 0.5, 0.2] }
+];
+let targetIndex = 1;
+
+/* Player State */
+let px = 0, py = 0, pz = 0;
+let yaw = 0, pitch = 0;
+let throttle = 0;
+let active = false;
+let tilt = false;
+let rawSensor = null, neutralSensor = null;
+let turnX = 0, turnY = 0;
+let drag = null;
+let lastTime = 0, fps = 60;
+let right = [1,0,0], up = [0,1,0], forward = [0,0,-1], back = [0,0,1];
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+function updateBasis() {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw);
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  right = [cy, 0, -sy];
+  forward = [-sy * cp, sp, -cy * cp];
+  up = [sy * sp, cp, cy * sp];
+  back = [-forward[0], -forward[1], -forward[2]];
+}
+
+function spawnStar(i, initial) {
+  const k = i * 3;
+  if (initial) {
+    const z = rand(-1, 1), a = rand(0, Math.PI * 2), r = rand(300, 7000), s = Math.sqrt(1 - z * z);
+    positions[k]   = px + Math.cos(a) * s * r;
+    positions[k+1] = py + z * r;
+    positions[k+2] = pz + Math.sin(a) * s * r;
+  } else {
+    const d = rand(4500, 7500), x = rand(-7000, 7000), y = rand(-4500, 4500);
+    for (let j = 0; j < 3; j++) {
+      positions[k+j] = (j===0?px:j===1?py:pz) + forward[j] * d + right[j] * x + up[j] * y;
+    }
+  }
+  const t = Math.random(), b = rand(0.35, 1.0);
+  colors[k]   = b * (t < 0.25 ? 1.0 : t < 0.6 ? 0.75 : 0.85);
+  colors[k+1] = b * (t < 0.25 ? 0.5 : t < 0.6 ? 0.85 : 0.95);
+  colors[k+2] = b * (t < 0.25 ? 0.2 : t < 0.6 ? 1.00 : 1.00);
+  sizes[i] = rand(1.2, 2.8);
+}
+for (let i = 0; i < N; i++) spawnStar(i, true);
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.floor(innerWidth * dpr);
+  canvas.height = Math.floor(innerHeight * dpr);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+addEventListener('resize', resize);
+resize();
+
+/* Controls */
+const keys = {};
+const held = { thrust: false, brake: false };
+
+function bindHold(id, key) {
+  const el = document.getElementById(id);
+  el.onpointerdown = e => { el.setPointerCapture(e.pointerId); held[key] = true; el.classList.add('active'); };
+  el.onpointerup = el.onpointercancel = () => { held[key] = false; el.classList.remove('active'); };
+}
+bindHold('btnThrust', 'thrust');
+bindHold('btnBrake', 'brake');
+
+canvas.onpointerdown = e => {
+  canvas.setPointerCapture(e.pointerId);
+  drag = { x: e.clientX, y: e.clientY };
+};
+canvas.onpointermove = e => {
+  if (!drag || tilt) return;
+  yaw -= (e.clientX - drag.x) * 0.0035;
+  pitch += (e.clientY - drag.y) * 0.0035;
+  drag = { x: e.clientX, y: e.clientY };
+};
+canvas.onpointerup = canvas.onpointercancel = () => drag = null;
+
+addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key.startsWith('Arrow')) e.preventDefault(); });
+addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+/* Tilt Gyro Handling */
+function getOrientationMap(beta, gamma) {
+  const angle = ((screen.orientation?.angle ?? window.orientation ?? 0) * Math.PI / 180);
+  return {
+    x: gamma * Math.cos(angle) + beta * Math.sin(angle),
+    y: beta * Math.cos(angle) - gamma * Math.sin(angle)
+  };
+}
+const wrapDeg = v => ((v + 180) % 360 + 360) % 360 - 180;
+
+addEventListener('deviceorientation', e => {
+  if (e.beta == null || e.gamma == null) return;
+  rawSensor = getOrientationMap(e.beta, e.gamma);
+  if (tilt && !neutralSensor) neutralSensor = { ...rawSensor };
+  if (neutralSensor) {
+    turnX = clamp(wrapDeg(rawSensor.x - neutralSensor.x) / 22, -1, 1);
+    turnY = clamp(wrapDeg(rawSensor.y - neutralSensor.y) / 22, -1, 1);
+  }
+});
+
+function launchGame() {
+  active = true;
+  document.getElementById('menu').style.display = 'none';
+  lastTime = performance.now();
+}
+
+async function enableTilt() {
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res !== 'granted') throw Error('Motion permission denied');
+    }
+    tilt = true;
+    neutralSensor = rawSensor ? { ...rawSensor } : null;
+    document.getElementById('btnTilt').textContent = 'TILT ON';
+    launchGame();
+  } catch(err) {
+    document.getElementById('btnTilt').textContent = 'TILT OFF';
+    launchGame();
+  }
+}
+
+document.getElementById('launchTilt').onclick = enableTilt;
+document.getElementById('launchTouch').onclick = launchGame;
+document.getElementById('btnTilt').onclick = () => {
+  if (tilt) { tilt = false; document.getElementById('btnTilt').textContent = 'ENABLE TILT'; }
+  else enableTilt();
+};
+document.getElementById('btnLevel').onclick = () => {
+  neutralSensor = rawSensor ? { ...rawSensor } : null;
+  turnX = turnY = 0;
+};
+document.getElementById('btnTarget').onclick = () => {
+  targetIndex = (targetIndex + 1) % celestialBodies.length;
+  document.getElementById('btnTarget').textContent = 'TARGET: ' + celestialBodies[targetIndex].name.replace('AETHEL-','');
+};
+
+/* 2D Canvas Overlay for Celestial Bodies & Atmosphere */
+const overlay = document.createElement('canvas');
+overlay.style.position = 'fixed';
+overlay.style.inset = '0';
+overlay.style.pointerEvents = 'none';
+overlay.style.zIndex = '6';
+document.body.appendChild(overlay);
+const ctx = overlay.getContext('2d');
+
+function resizeOverlay() {
+  overlay.width = innerWidth;
+  overlay.height = innerHeight;
+}
+addEventListener('resize', resizeOverlay);
+resizeOverlay();
+
+/* Main Game Loop */
+function setVertex(arr, o, i, x, y, z, a) {
+  const k = i * 3;
+  arr[o]   = x; arr[o+1] = y; arr[o+2] = z;
+  arr[o+3] = colors[k]; arr[o+4] = colors[k+1]; arr[o+5] = colors[k+2];
+  arr[o+6] = sizes[i]; arr[o+7] = a;
+}
+
+function frame(t) {
+  requestAnimationFrame(frame);
+  const dt = lastTime ? Math.min((t - lastTime) / 1000, 0.04) : 0.016;
+  lastTime = t;
+  fps += (1 / dt - fps) * 0.05;
+
+  if (active) {
+    let steerX = (keys['arrowright'] || keys['d'] ? 1 : 0) - (keys['arrowleft'] || keys['a'] ? 1 : 0);
+    let steerY = (keys['arrowup'] || keys['w'] ? 1 : 0) - (keys['arrowdown'] || keys['s'] ? 1 : 0);
+    if (tilt) {
+      steerX += Math.abs(turnX) < 0.06 ? 0 : turnX;
+      steerY += Math.abs(turnY) < 0.06 ? 0 : -turnY;
+    }
+    yaw -= steerX * 0.85 * dt;
+    pitch = clamp(pitch + steerY * 0.75 * dt, -1.48, 1.48);
+
+    if (held.thrust || keys['shift']) throttle = clamp(throttle + 0.35 * dt, 0, 1);
+    if (held.brake || keys['control']) throttle = clamp(throttle - 0.65 * dt, 0, 1);
+  }
+
+  updateBasis();
+
+  // Speed scaling (slow cruise to 0.990c)
+  const velC = 0.99 * Math.pow(throttle, 1.6);
+  const moveUnits = active ? (20 + velC * 6500) * dt : 0;
+
+  px += forward[0] * moveUnits;
+  py += forward[1] * moveUnits;
+  pz += forward[2] * moveUnits;
+
+  // Starfield update
+  const streak = 6 + velC * 240;
+  for (let i = 0; i < N; i++) {
+    const k = i * 3;
+    const dx = positions[k] - px;
+    const dy = positions[k+1] - py;
+    const dz = positions[k+2] - pz;
+    const dist = Math.hypot(dx, dy, dz);
+
+    if (dist > 10000 || dist < 12) spawnStar(i, false);
+
+    const relX = positions[k] - px;
+    const relY = positions[k+1] - py;
+    const relZ = positions[k+2] - pz;
+
+    setVertex(points, i * 8, i, relX, relY, relZ, 1.0);
+    setVertex(lines, i * 16, i, relX, relY, relZ, Math.min(0.7, velC * 2.2));
+    setVertex(lines, i * 16 + 8, i, relX + forward[0] * streak, relY + forward[1] * streak, relZ + forward[2] * streak, 0.0);
+  }
+
+  // WebGL Render
+  gl.clearColor(0.0, 0.003, 0.010, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  gl.uniform3fv(uniforms.right, right);
+  gl.uniform3fv(uniforms.up, up);
+  gl.uniform3fv(uniforms.back, back);
+  gl.uniform1f(uniforms.aspect, canvas.width / canvas.height);
+
+  bindBuffer(pb);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, points);
+  gl.drawArrays(gl.POINTS, 0, N);
+
+  if (velC > 0.004) {
+    bindBuffer(lb);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, lines);
+    gl.drawArrays(gl.LINES, 0, N * 2);
+  }
+
+  // Orbit & Atmosphere Simulation
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+  const cx = overlay.width / 2;
+  const cy = overlay.height / 2;
+  const fovFactor = (overlay.height / 2) * 1.35;
+
+  let lockedScreen = null;
+  const targetObj = celestialBodies[targetIndex];
+
+  celestialBodies.forEach((b, idx) => {
+    if (b.orbitSpeed > 0) {
+      const angle = t * 0.00015 * b.orbitSpeed;
+      b.x = celestialBodies[0].x + Math.cos(angle) * b.orbitR;
+      b.z = celestialBodies[0].z + Math.sin(angle) * b.orbitR;
+    }
+
+    const rx = b.x - px;
+    const ry = b.y - py;
+    const rz = b.z - pz;
+
+    // View space transform
+    const vx = rx * right[0] + ry * right[1] + rz * right[2];
+    const vy = rx * up[0]    + ry * up[1]    + rz * up[2];
+    const vz = rx * back[0]  + ry * back[1]  + rz * back[2];
+
+    const dist = Math.hypot(rx, ry, rz);
+
+    if (vz < -5) { // In front of camera
+      const depth = -vz;
+      const sx = cx + (vx / depth) * fovFactor;
+      const sy = cy - (vy / depth) * fovFactor;
+      const screenRadius = (b.r / depth) * fovFactor;
+
+      if (idx === targetIndex) {
+        lockedScreen = { sx, sy, screenRadius, dist, name: b.name };
+      }
+
+      // Draw Planet / Star Sphere
+      if (screenRadius > 1) {
+        const grad = ctx.createRadialGradient(sx - screenRadius*0.25, sy - screenRadius*0.25, screenRadius*0.1, sx, sy, screenRadius);
+        grad.addColorStop(0, `rgb(${Math.round(b.cr*255)}, ${Math.round(b.cg*255)}, ${Math.round(b.cb*255)})`);
+        grad.addColorStop(0.8, `rgb(${Math.round(b.cr*160)}, ${Math.round(b.cg*160)}, ${Math.round(b.cb*160)})`);
+        grad.addColorStop(1, 'rgba(0,0,0,0.9)');
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(sx, sy, screenRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Atmospheric Halo
+        if (b.atmosColor) {
+          const atmosR = screenRadius * 1.35;
+          const atmosGrad = ctx.createRadialGradient(sx, sy, screenRadius * 0.9, sx, sy, atmosR);
+          atmosGrad.addColorStop(0, `rgba(${b.atmosColor[0]*255}, ${b.atmosColor[1]*255}, ${b.atmosColor[2]*255}, 0.55)`);
+          atmosGrad.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = atmosGrad;
+          ctx.beginPath();
+          ctx.arc(sx, sy, atmosR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  });
+
+  // Target Reticle Update
+  const reticle = document.getElementById('targetReticle');
+  const tag = document.getElementById('targetTag');
+  if (lockedScreen && lockedScreen.sx > -50 && lockedScreen.sx < overlay.width + 50 &&
+      lockedScreen.sy > -50 && lockedScreen.sy < overlay.height + 50) {
+    reticle.style.display = 'block';
+    reticle.style.left = lockedScreen.sx + 'px';
+    reticle.style.top = lockedScreen.sy + 'px';
+    const boxSize = Math.max(34, lockedScreen.screenRadius * 2 + 16);
+    reticle.style.width = boxSize + 'px';
+    reticle.style.height = boxSize + 'px';
+    tag.textContent = `${lockedScreen.name} [${Math.round(lockedScreen.dist)}u]`;
+  } else {
+    reticle.style.display = 'none';
+  }
+
+  // HUD Text Update
+  document.getElementById('vel').textContent = velC.toFixed(3);
+  document.getElementById('thr').textContent = Math.round(throttle * 100);
+  const yawDeg = ((yaw * 180 / Math.PI) % 360 + 360) % 360;
+  const pitchDeg = pitch * 180 / Math.PI;
+  document.getElementById('hdg').textContent = `${yawDeg.toFixed(1).padStart(5,'0')} / ${pitchDeg>=0?'+':''}${pitchDeg.toFixed(1)}`;
+  document.getElementById('pos').textContent = `${Math.round(px/100)} : ${Math.round(py/100)} : ${Math.round(pz/100)}`;
+  
+  const targetDist = Math.hypot(targetObj.x - px, targetObj.y - py, targetObj.z - pz);
+  document.getElementById('tgtName').textContent = targetObj.name;
+  document.getElementById('tgtDist').textContent = Math.round(targetDist);
+  document.getElementById('tgtClose').textContent = (velC * 6500).toFixed(0) + ' u/s';
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
