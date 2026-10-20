@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>MERIDIAN GALACTIC FLIGHT — PHASE 4.1</title>
+<title>MERIDIAN GALACTIC FLIGHT — PHASE 4.2</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -154,7 +154,7 @@
 <div id="hud">
   <div id="tl" class="panel">
     <div>MERIDIAN GALACTIC FLIGHT</div>
-    <div class="dim">PHASE 4.1 // 50X MASSIVE SOLID PLANET</div>
+    <div class="dim">PHASE 4.2 // ANTI-STICK DIVE FIX</div>
   </div>
   <div id="tr" class="panel">
     <div>VEL <span id="vel">0.000</span> <span id="velUnit">c</span> | ALT <span id="alt" class="cyan">ORBIT</span></div>
@@ -183,12 +183,12 @@
 
 <div id="menu">
   <article>
-    <h1>MERIDIAN // 50X SOLID PLANET</h1>
+    <h1>MERIDIAN // PHASE 4.2</h1>
     <p>
-      Phase 4.1 scales <strong>Aethel-Prime</strong> to massive 50× planetary scale with an opaque solid core.<br><br>
-      • <strong>Solid Core:</strong> No see-through wireframe; horizon cleanly occludes space and far terrain.<br>
-      • <strong>Massive Scale:</strong> 17,500u planetary radius with 4,500u atmospheric depth.<br>
-      • Full 360° spherical flight with <strong>ORBITAL ASCENT</strong> back to deep space.
+      Phase 4.2 fixes <strong>sticky tilt controls</strong> and restores reliable <strong>downward dive flight</strong>.<br><br>
+      • Smoothed, dead-zoned tilt steering with timed neutral re-centering.<br>
+      • Stronger planetary dive response and steeper safe dive limit.<br>
+      • Keeps the Phase 4.1 50× solid planet, horizon occlusion, and orbital ascent systems.
     </p>
     <button class="launchBtn" id="launchTilt">LAUNCH (TILT)</button>
     <button class="launchSec" id="launchTouch">LAUNCH (TOUCH / KEYS)</button>
@@ -308,6 +308,8 @@ let active = false;
 let tilt = false;
 let rawSensor = null, neutralSensor = null;
 let turnX = 0, turnY = 0;
+let smoothX = 0, smoothY = 0;
+let neutralStillSince = 0;
 let drag = null;
 let lastTime = 0, fps = 60;
 let right = [1,0,0], up = [0,1,0], forward = [0,0,-1], back = [0,0,1];
@@ -384,10 +386,10 @@ canvas.onpointermove = e => {
   if (!drag) return;
   if (currentEngine === 'SPACE') {
     yaw -= (e.clientX - drag.x) * 0.004;
-    pitch = clamp(pitch - (e.clientY - drag.y) * 0.005, -1.38, 1.38);
+    pitch = clamp(pitch - (e.clientY - drag.y) * 0.005, -1.45, 1.45);
   } else {
     pHeading += (e.clientX - drag.x) * 0.004;
-    pPitch = clamp(pPitch - (e.clientY - drag.y) * 0.004, -1.2, 1.2);
+    pPitch = clamp(pPitch - (e.clientY - drag.y) * 0.005, -1.35, 1.35);
   }
   drag = { x: e.clientX, y: e.clientY };
 };
@@ -415,8 +417,30 @@ addEventListener('deviceorientation', e => {
   rawSensor = getOrientationMap(e.beta, e.gamma);
   if (tilt && !neutralSensor) neutralSensor = { ...rawSensor };
   if (neutralSensor) {
-    turnX = clamp(wrapDeg(rawSensor.x - neutralSensor.x) / 18, -1, 1);
-    turnY = clamp(wrapDeg(rawSensor.y - neutralSensor.y) / 14, -1, 1);
+    const dx = wrapDeg(rawSensor.x - neutralSensor.x);
+    const dy = wrapDeg(rawSensor.y - neutralSensor.y);
+
+    /* Phase 4.2: dead zone plus smoothing prevents sticky tilt controls. */
+    const targetX = Math.abs(dx) < 0.7 ? 0 : clamp((dx - Math.sign(dx) * 0.7) / 15, -1, 1);
+    const targetY = Math.abs(dy) < 0.7 ? 0 : clamp((dy - Math.sign(dy) * 0.7) / 12, -1, 1);
+    smoothX += (targetX - smoothX) * 0.28;
+    smoothY += (targetY - smoothY) * 0.28;
+    turnX = clamp(smoothX, -1, 1);
+    turnY = clamp(smoothY, -1, 1);
+
+    /* Timed neutral recalibration: only when held near neutral for 1.5 seconds. */
+    const now = performance.now();
+    if (Math.abs(dx) < 1.5 && Math.abs(dy) < 1.5) {
+      if (!neutralStillSince) neutralStillSince = now;
+      if (now - neutralStillSince > 1500) {
+        neutralSensor = { ...rawSensor };
+        smoothX = smoothY = 0;
+        turnX = turnY = 0;
+        neutralStillSince = 0;
+      }
+    } else {
+      neutralStillSince = 0;
+    }
   }
 });
 
@@ -434,6 +458,9 @@ async function enableTilt() {
     }
     tilt = true;
     neutralSensor = rawSensor ? { ...rawSensor } : null;
+    smoothX = smoothY = 0;
+    turnX = turnY = 0;
+    neutralStillSince = 0;
     document.getElementById('btnTilt').textContent = 'TILT ON';
     launchGame();
   } catch(err) {
@@ -457,7 +484,9 @@ document.getElementById('btnLevel').onclick = () => {
     pPitch = 0;
   }
   neutralSensor = rawSensor ? { ...rawSensor } : null;
+  smoothX = smoothY = 0;
   turnX = turnY = 0;
+  neutralStillSince = 0;
 };
 
 /* TARGET / ORBITAL ASCENT BUTTON */
@@ -579,10 +608,10 @@ function frame(t) {
     let steerY = (keys['arrowup'] || keys['w'] ? 1 : 0) - (keys['arrowdown'] || keys['s'] ? 1 : 0);
     if (tilt && !drag) {
       steerX += Math.abs(turnX) < 0.05 ? 0 : turnX;
-      steerY += Math.abs(turnY) < 0.05 ? 0 : turnY * 1.4;
+      steerY += Math.abs(turnY) < 0.05 ? 0 : turnY * 1.5;
     }
     yaw -= steerX * 0.85 * dt;
-    pitch = clamp(pitch + steerY * 0.95 * dt, -1.38, 1.38);
+    pitch = clamp(pitch + steerY * 1.05 * dt, -1.45, 1.45);
 
     updateBasis();
 
@@ -663,10 +692,11 @@ function frame(t) {
       let steerY = (keys['arrowup'] || keys['w'] ? 1 : 0) - (keys['arrowdown'] || keys['s'] ? 1 : 0);
       if (tilt && !drag) {
         steerX += Math.abs(turnX) < 0.05 ? 0 : turnX;
-        steerY += Math.abs(turnY) < 0.05 ? 0 : turnY * 1.4;
+        steerY += Math.abs(turnY) < 0.05 ? 0 : turnY * 1.5;
       }
       pHeading += steerX * 1.10 * dt;
-      pPitch = clamp(pPitch + steerY * 1.05 * dt, -1.25, 1.25);
+      /* Phase 4.2: stronger, more reliable dive response. */
+      pPitch = clamp(pPitch + steerY * 1.75 * dt, -1.35, 1.35);
     } else if (isAscending) {
       pPitch = Math.min(1.4, pPitch + 0.7 * dt);
     }
@@ -683,8 +713,9 @@ function frame(t) {
       pLat = clamp(pLat + latSpeed * dt, -Math.PI * 0.48, Math.PI * 0.48);
       pLon = (pLon + lonSpeed * dt + Math.PI * 3) % (Math.PI * 2) - Math.PI;
 
-      // Vertical rate
-      const vRate = pSpeed * Math.sin(pPitch) - (isAscending ? 0 : 8.5 * atmosDensity);
+      // Vertical rate — Phase 4.2 dive assist makes tilt-forward reliably descend.
+      const diveAssist = pPitch < 0 ? pSpeed * Math.sin(pPitch) * 0.15 : 0;
+      const vRate = pSpeed * Math.sin(pPitch) + diveAssist - (isAscending ? 0 : 8.5 * atmosDensity);
       pAlt += vRate * dt;
 
       // Touchdown landing detection
